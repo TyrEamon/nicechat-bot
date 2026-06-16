@@ -2,6 +2,18 @@ import type { Env, UserProfile } from './types';
 import { Store } from './store';
 import { Telegram } from './telegram';
 
+function randomIntInclusive(min: number, max: number): number {
+  const range = max - min + 1;
+  const maxUnbiased = Math.floor(0xffffffff / range) * range;
+  const buffer = new Uint32Array(1);
+  let value: number;
+  do {
+    crypto.getRandomValues(buffer);
+    value = buffer[0];
+  } while (value >= maxUnbiased);
+  return min + (value % range);
+}
+
 // Starts/continues first-time human verification. Returns true if the user is verified.
 export async function ensureVerified(
   profile: UserProfile,
@@ -48,8 +60,8 @@ async function issueChallenge(profile: UserProfile, env: Env, store: Store, tg: 
     return;
   }
   // default: math
-  const a = Math.floor(Math.random() * 8) + 1;
-  const b = Math.floor(Math.random() * 8) + 1;
+  const a = randomIntInclusive(2, 12);
+  const b = randomIntInclusive(2, 12);
   await store.setVerifyAnswer(profile.id, String(a + b));
   await tg.sendMessage(profile.id, `请回答以下算术题完成验证：\n${a} + ${b} = ?`);
 }
