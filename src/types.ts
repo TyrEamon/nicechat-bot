@@ -1,0 +1,94 @@
+export interface Env {
+  // Bindings
+  TG_BOT_KV: KVNamespace;
+  AI: Ai;
+
+  // Secrets
+  BOT_TOKEN: string;
+  BOT_SECRET: string;
+  AI_API_KEY: string;
+
+  // Vars
+  ADMIN_UID: string;
+  RELAY_MODE: string;
+  ADMIN_GROUP_ID: string;
+
+  AI_BASE_URL: string;
+  AI_MODEL: string;
+  AI_TIMEOUT_MS: string;
+  AI_PROVIDER: string;
+  AI_FALLBACK_TO_CF: string;
+  CF_AI_MODEL: string;
+
+  FILTER_ENABLED: string;
+  FILTER_THRESHOLD: string;
+  BLOCK_KEYWORDS: string;
+
+  VERIFY_MODE: string;
+  VERIFY_QUESTION: string;
+  VERIFY_ANSWER: string;
+
+  WELCOME_MESSAGE: string;
+  AUTO_GREETING: string;
+  AI_REPLY_PREVIEW: string;
+  AI_CONTEXT_ROUNDS: string;
+}
+
+export type SpamCategory = 'normal' | 'ad' | 'scam' | 'spam';
+
+export interface Classification {
+  category: SpamCategory;
+  confidence: number;
+  reason: string;
+  provider: 'relay' | 'workers_ai' | 'keyword' | 'none';
+}
+
+export interface UserProfile {
+  id: number;
+  name?: string;
+  username?: string;
+  verified: boolean;
+  greeted: boolean;
+  createdAt: number;
+}
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// Minimal Telegram update typing (only what we use).
+export interface TgUser {
+  id: number;
+  is_bot: boolean;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+}
+
+export interface TgChat {
+  id: number;
+  type: string;
+}
+
+export interface TgMessage {
+  message_id: number;
+  from?: TgUser;
+  chat: TgChat;
+  text?: string;
+  caption?: string;
+  reply_to_message?: TgMessage;
+  forward_origin?: unknown;
+}
+
+export interface TgUpdate {
+  update_id: number;
+  message?: TgMessage;
+  edited_message?: TgMessage;
+  callback_query?: {
+    id: string;
+    from: TgUser;
+    data?: string;
+    message?: TgMessage;
+  };
+}

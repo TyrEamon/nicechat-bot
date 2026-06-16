@@ -1,0 +1,4 @@
+# Local dev secrets for `wrangler dev`. Copy to .dev.vars (gitignored) and fill in.
+BOT_TOKEN=123456:your-telegram-bot-token
+BOT_SECRET=some-long-random-webhook-secret
+AI_API_KEY=sk-your-relay-station-key
