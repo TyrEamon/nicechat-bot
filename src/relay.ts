@@ -16,11 +16,12 @@ class PrivateRelay implements RelayTarget {
     const fromId = msg.from!.id;
 
     // Header so the admin knows who sent it.
-    await this.tg.sendMessage(adminId, senderHeader(msg.from));
+    const header = await this.tg.sendMessage(adminId, senderHeader(msg.from));
     // Copy the actual content (text/photo/file/sticker...).
     const copied = await this.tg.copyMessage(adminId, msg.chat.id, msg.message_id);
-    // Map admin-side message id -> user id, so admin can reply.
+    // Map both admin-side message ids -> user id, so replying to either works.
     await this.store.mapAdminMsg(copied.message_id, fromId);
+    await this.store.mapAdminMsg(header.message_id, fromId);
   }
 }
 
