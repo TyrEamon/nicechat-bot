@@ -7,6 +7,7 @@ import { classifyMessage, shouldIntercept } from './ai-filter';
 import { makeRelay } from './relay';
 import { handleAdminMessage } from './admin';
 import { handleDraftCallback } from './assistant';
+import { handleGroupAiMessage } from './group-ai';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -87,6 +88,13 @@ async function handleUpdate(update: TgUpdate, env: Env): Promise<void> {
 
   const msg = update.message ?? update.edited_message;
   if (!msg || !msg.from || msg.from.is_bot) return;
+
+  if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    if (await handleGroupAiMessage(msg, env, store, tg)) return;
+    return;
+  }
+
+  if (msg.chat.type !== 'private') return;
 
   if (isAdmin(env, msg.from.id)) {
     try {

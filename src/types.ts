@@ -11,6 +11,7 @@ export interface Env {
 
   // Vars
   ADMIN_UID: string;
+  BOT_USERNAME: string;
   RELAY_MODE: string;
   ADMIN_GROUP_ID: string;
 
@@ -43,6 +44,14 @@ export interface Env {
   SEARCH_PROVIDER: string;
   SEARCH_MAX_RESULTS: string;
   SEARCH_DECISION_MODEL: string;
+
+  GROUP_AI_ENABLED: string;
+  GROUP_AI_MAX_CONCURRENCY: string;
+  GROUP_AI_LOCK_TTL_SECONDS: string;
+  GROUP_USER_COOLDOWN_SECONDS: string;
+  GROUP_AI_CONTEXT_ROUNDS: string;
+  GROUP_AI_MAX_INPUT_CHARS: string;
+  GROUP_AI_MAX_OUTPUT_CHARS: string;
 }
 
 export type SpamCategory = 'normal' | 'ad' | 'scam' | 'spam';
@@ -82,12 +91,20 @@ export interface TgChat {
   type: string;
 }
 
+export interface TgMessageEntity {
+  type: string;
+  offset: number;
+  length: number;
+}
+
 export interface TgMessage {
   message_id: number;
   from?: TgUser;
   chat: TgChat;
   text?: string;
   caption?: string;
+  entities?: TgMessageEntity[];
+  caption_entities?: TgMessageEntity[];
   reply_to_message?: TgMessage;
   forward_origin?: unknown;
 }

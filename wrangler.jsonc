@@ -51,6 +51,15 @@
     "AUTO_SEARCH_ENABLED": "true",
     "SEARCH_PROVIDER": "brave",       // brave | tavily
     "SEARCH_MAX_RESULTS": "5",
-    "SEARCH_DECISION_MODEL": ""       // empty = use current AI model
+    "SEARCH_DECISION_MODEL": "",      // empty = use current AI model
+
+    "BOT_USERNAME": "",               // optional; empty = auto getMe cache, or fill without @
+    "GROUP_AI_ENABLED": "false",      // true = allow @bot in groups/supergroups
+    "GROUP_AI_MAX_CONCURRENCY": "1",  // low concurrency to avoid token bursts
+    "GROUP_AI_LOCK_TTL_SECONDS": "120",
+    "GROUP_USER_COOLDOWN_SECONDS": "30",
+    "GROUP_AI_CONTEXT_ROUNDS": "4",
+    "GROUP_AI_MAX_INPUT_CHARS": "1200",
+    "GROUP_AI_MAX_OUTPUT_CHARS": "1800"
   }
 }

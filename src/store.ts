@@ -187,6 +187,15 @@ export class Store {
     return this.kv.delete('cfg:model');
   }
 
+  // ---- bot profile cache ----
+  getBotUsername(): Promise<string | null> {
+    return this.kv.get('cfg:bot_username');
+  }
+
+  setBotUsername(username: string): Promise<void> {
+    return this.kv.put('cfg:bot_username', username, { expirationTtl: 60 * 60 * 24 });
+  }
+
   // ---- ghostwrite drafts ----
   saveGhostDraft(draft: GhostDraft, ttl = 60 * 60): Promise<void> {
     return this.putJSON(`draft:${draft.id}`, draft, ttl);
@@ -211,6 +220,33 @@ export class Store {
     const maxItems = maxRounds * 2;
     const trimmed = turns.slice(-maxItems);
     await this.putJSON(`ctx:${key}`, trimmed, 60 * 60 * 24 * 7);
+  }
+
+  // ---- group AI concurrency / cooldown ----
+  async tryAcquireGroupLock(chatId: number, limit: number, ttlSeconds: number): Promise<boolean> {
+    const key = `lock:group:${chatId}`;
+    const current = Number((await this.kv.get(key)) ?? '0');
+    if (current >= limit) return false;
+    await this.kv.put(key, String(current + 1), { expirationTtl: ttlSeconds });
+    return true;
+  }
+
+  async releaseGroupLock(chatId: number): Promise<void> {
+    const key = `lock:group:${chatId}`;
+    const current = Number((await this.kv.get(key)) ?? '0');
+    if (current <= 1) {
+      await this.kv.delete(key);
+      return;
+    }
+    await this.kv.put(key, String(current - 1), { expirationTtl: 120 });
+  }
+
+  async hitGroupUserCooldown(chatId: number, userId: number, seconds: number): Promise<boolean> {
+    if (seconds <= 0) return true;
+    const key = `cooldown:group:${chatId}:${userId}`;
+    if (await this.kv.get(key)) return false;
+    await this.kv.put(key, '1', { expirationTtl: seconds });
+    return true;
   }
 }
 

@@ -36,6 +36,7 @@
 - **AI 私人助理**:你可 `/ai <问题>` 或开启 `/aimode on` 后直接发普通消息与助理聊天。
 - **模型切换**:`/model list` 查询中转站可用模型,`/model <模型名>` 动态切换。
 - **自动搜索**:配置 Brave Search 或 Tavily 后,助理会自行判断是否需要联网搜索,并在回答中附来源。
+- **群聊 AI**:可选开启。把 bot 拉进你熟悉的群后,成员用 `@bot 问题` 触发 AI,并通过并发锁和用户冷却限制 token 爆炸。
 - **Cloudflare 部署**:Cloudflare Workers + KV + Workers AI 绑定,无需自建服务器。
 
 ## 模型能力说明
@@ -107,6 +108,16 @@ AI 判定广告/骚扰 -> 记录拦截 -> 累计违规次数
   -> 管理员 /unban 解封
 ```
 
+群聊 AI:
+
+```text
+群成员 @bot 提问 -> Worker 识别群聊 mention
+  -> 用户冷却检查
+  -> 群聊并发锁检查
+  -> 调用当前 AI 模型/自动搜索
+  -> 在群里 reply 原消息回答
+```
+
 ## 配置变量总表
 
 手动网页部署时,普通变量可由 `wrangler.jsonc` 提供。Secret 必须在 Cloudflare 后台单独添加,不要写进仓库。
@@ -127,6 +138,7 @@ AI 判定广告/骚扰 -> 记录拦截 -> 累计违规次数
 | 变量名 | 必填 | 默认/建议值 | 说明 |
 | --- | --- | --- | --- |
 | `ADMIN_UID` | 是 | 你的 Telegram 数字 ID | 管理员鉴权核心,@userinfobot 获取 |
+| `BOT_USERNAME` | 否 | 留空 | 群聊 `@bot` 触发用;留空会自动 `getMe` 并缓存,也可手填不带 `@` 的 bot 用户名 |
 | `RELAY_MODE` | 是 | `private` | 个人私聊模式;`group` 预留 |
 | `ADMIN_GROUP_ID` | 否 | 留空 | 仅未来 group 模式使用 |
 | `AI_BASE_URL` | 是 | 你的中转站地址 | 不要带 `/chat/completions`,如 `https://xxx/v1` |
@@ -149,6 +161,13 @@ AI 判定广告/骚扰 -> 记录拦截 -> 累计违规次数
 | `SEARCH_PROVIDER` | 否 | `brave` | `brave` / `tavily` |
 | `SEARCH_MAX_RESULTS` | 否 | `5` | 搜索结果数量 |
 | `SEARCH_DECISION_MODEL` | 否 | 留空 | 搜索决策模型;留空使用当前模型 |
+| `GROUP_AI_ENABLED` | 否 | `false` | 群聊 AI 开关;设为 `true` 后才响应群里的 `@bot` |
+| `GROUP_AI_MAX_CONCURRENCY` | 否 | `1` | 单个群同时处理的 AI 请求数;建议先保持 `1` |
+| `GROUP_AI_LOCK_TTL_SECONDS` | 否 | `120` | 群聊并发锁过期时间,防止异常中断后永久锁住 |
+| `GROUP_USER_COOLDOWN_SECONDS` | 否 | `30` | 同一用户在同一群触发 AI 的冷却秒数 |
+| `GROUP_AI_CONTEXT_ROUNDS` | 否 | `4` | 群聊上下文保留轮数,独立于私聊上下文 |
+| `GROUP_AI_MAX_INPUT_CHARS` | 否 | `1200` | 群聊单次问题最大输入字符数,超出会截断 |
+| `GROUP_AI_MAX_OUTPUT_CHARS` | 否 | `1800` | 群聊 AI 单次回答最大字符数,控制刷屏和 token |
 | `AUTO_BAN_THRESHOLD` | 否 | `3` | AI 拦截累计达到该次数后自动封禁;`0` 关闭 |
 | `BAN_MESSAGE` | 否 | 自定义 | 被封禁用户收到的提示模板 |
 | `APPEAL_MAX_ATTEMPTS` | 否 | `2` | 用户申诉次数上限 |
@@ -226,6 +245,31 @@ SEARCH_PROVIDER=tavily
 
 如果没有配置 `SEARCH_API_KEY`,不会调用搜索 API,也不会额外消耗搜索额度。
 
+## 群聊 AI 说明
+
+群聊 AI 默认关闭。开启后,bot 在 `group` / `supergroup` 中只响应明确包含 `@你的bot用户名` 的消息,不会接管整个群。
+
+推荐配置:
+
+```text
+GROUP_AI_ENABLED=true
+GROUP_AI_MAX_CONCURRENCY=1
+GROUP_USER_COOLDOWN_SECONDS=30
+GROUP_AI_CONTEXT_ROUNDS=4
+```
+
+使用方式:
+
+```text
+@你的bot用户名 这个问题怎么解决？
+```
+
+注意事项:
+
+- 如果 Telegram 开着 Bot Privacy,普通 `@bot` 文本可能不会推送给 webhook。想要自然 `@bot` 触发,建议在 @BotFather 里 `/setprivacy` -> 选择 bot -> `Disable`。代码仍会忽略非 `@bot` 消息。
+- 并发限制基于 Cloudflare KV 做软锁,适合你认识的小群防止连环刷模型;如果未来要做公开大群,更建议改 Durable Objects 做强一致队列。
+- 群聊 AI 不执行管理命令,也不走陌生人广告封禁流程;它只是群内问答助手。
+
 ## 隐私与安全
 
 - 不要把 `BOT_TOKEN`、`BOT_SECRET`、`AI_API_KEY`、`SEARCH_API_KEY` 写进仓库。
@@ -256,5 +300,5 @@ npm run deploy
 ## 当前边界
 
 - 暂不支持 AI 看图。图片/文件可转发,但不会被模型理解。
-- 管理群/话题模式保留为未来扩展,当前主模式是个人私聊。
+- 管理群/话题模式仍保留为未来扩展;当前已支持可选群聊 `@bot` AI 问答,主模式仍是个人私聊。
 - 搜索依赖第三方搜索 API,搜索质量取决于 provider 与查询结果。

@@ -71,6 +71,10 @@ export class Telegram {
   deleteWebhook() {
     return this.call('deleteWebhook', {});
   }
+
+  getMe() {
+    return this.call<TgUser>('getMe', {});
+  }
 }
 
 export function displayName(u?: TgUser): string {
