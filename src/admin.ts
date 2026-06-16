@@ -2,6 +2,7 @@ import type { Env, TgMessage } from './types';
 import { Store } from './store';
 import { Telegram } from './telegram';
 import { handleAssistant, handleGhostwrite } from './assistant';
+import { listModels } from './ai-filter';
 
 // Handles messages coming from the admin's private chat with the bot.
 export async function handleAdminMessage(msg: TgMessage, env: Env, store: Store, tg: Telegram): Promise<void> {
@@ -19,6 +20,27 @@ export async function handleAdminMessage(msg: TgMessage, env: Env, store: Store,
     }
     await store.block(uid);
     return void tg.sendMessage(adminId, `已拉黑 uid:${uid}`);
+  }
+
+  if (text.startsWith('/model')) {
+    const arg = text.replace(/^\/model\s*/, '').trim();
+    if (!arg) {
+      const cur = (await store.getActiveModel()) || env.AI_MODEL;
+      return void tg.sendMessage(adminId, `当前模型：${cur}\n用法：\n/model list 查看可用模型\n/model <模型名> 切换\n/model default 恢复默认(${env.AI_MODEL})`);
+    }
+    if (arg === 'list') {
+      const models = await listModels(env);
+      if (!models.length) return void tg.sendMessage(adminId, '未能获取模型列表（检查 AI_BASE_URL / AI_API_KEY，或中转站不支持 /models）。');
+      const cur = (await store.getActiveModel()) || env.AI_MODEL;
+      const text = models.map((m) => (m === cur ? `• ${m}  ← 当前` : `• ${m}`)).join('\n');
+      return void tg.sendMessage(adminId, `可用模型（共 ${models.length}）：\n${text}`);
+    }
+    if (arg === 'default') {
+      await store.clearActiveModel();
+      return void tg.sendMessage(adminId, `已恢复默认模型：${env.AI_MODEL}`);
+    }
+    await store.setActiveModel(arg);
+    return void tg.sendMessage(adminId, `已切换模型为：${arg}`);
   }
 
   if (text.startsWith('/to ')) {

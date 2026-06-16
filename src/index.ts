@@ -99,7 +99,8 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
 
   // AI gatekeeper.
   if (text && (env.FILTER_ENABLED ?? 'true') === 'true') {
-    const c = await classifyMessage(text, env);
+    const activeModel = (await store.getActiveModel()) || env.AI_MODEL;
+    const c = await classifyMessage(text, env, activeModel);
     if (shouldIntercept(c, env)) {
       const id = `${userId}-${msg.message_id}`;
       await store.saveIntercepted(id, {

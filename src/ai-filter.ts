@@ -23,7 +23,7 @@ function parseClassification(raw: string): Omit<Classification, 'provider'> | nu
   }
 }
 
-async function classifyViaRelay(text: string, env: Env): Promise<Omit<Classification, 'provider'> | null> {
+async function classifyViaRelay(text: string, env: Env, model: string): Promise<Omit<Classification, 'provider'> | null> {
   if (!env.AI_BASE_URL || !env.AI_API_KEY) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(env.AI_TIMEOUT_MS || '2500'));
@@ -32,7 +32,7 @@ async function classifyViaRelay(text: string, env: Env): Promise<Omit<Classifica
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
       body: JSON.stringify({
-        model: env.AI_MODEL,
+        model,
         temperature: 0,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
@@ -67,12 +67,12 @@ async function classifyViaWorkersAi(text: string, env: Env): Promise<Omit<Classi
 }
 
 // Multi-tier: relay -> workers ai -> keyword -> default allow.
-export async function classifyMessage(text: string, env: Env): Promise<Classification> {
+export async function classifyMessage(text: string, env: Env, model = env.AI_MODEL): Promise<Classification> {
   const provider = env.AI_PROVIDER || 'auto';
   const fallbackCf = (env.AI_FALLBACK_TO_CF ?? 'true') === 'true';
 
   if (provider === 'relay' || provider === 'auto') {
-    const r = await classifyViaRelay(text, env);
+    const r = await classifyViaRelay(text, env, model);
     if (r) return { ...r, provider: 'relay' };
   }
   if (provider === 'workers_ai' || (provider === 'auto' && fallbackCf) || (provider === 'relay' && fallbackCf)) {
@@ -95,7 +95,7 @@ export function shouldIntercept(c: Classification, env: Env): boolean {
 }
 
 // Generic chat completion for ghostwriter / assistant, reusing the multi-tier channel.
-export async function chatComplete(messages: ChatTurn[], env: Env, systemPrompt: string): Promise<string> {
+export async function chatComplete(messages: ChatTurn[], env: Env, systemPrompt: string, model = env.AI_MODEL): Promise<string> {
   const full = [{ role: 'system' as const, content: systemPrompt }, ...messages];
   const provider = env.AI_PROVIDER || 'auto';
 
@@ -105,7 +105,7 @@ export async function chatComplete(messages: ChatTurn[], env: Env, systemPrompt:
         const res = await fetch(`${env.AI_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
-          body: JSON.stringify({ model: env.AI_MODEL, messages: full }),
+          body: JSON.stringify({ model, messages: full }),
         });
         if (res.ok) {
           const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
@@ -124,4 +124,19 @@ export async function chatComplete(messages: ChatTurn[], env: Env, systemPrompt:
     /* fall through */
   }
   return 'AI 暂时不可用，请稍后再试。';
+}
+
+// List available models from the OpenAI-compatible relay station (GET /models).
+export async function listModels(env: Env): Promise<string[]> {
+  if (!env.AI_BASE_URL || !env.AI_API_KEY) return [];
+  try {
+    const res = await fetch(`${env.AI_BASE_URL.replace(/\/$/, '')}/models`, {
+      headers: { authorization: `Bearer ${env.AI_API_KEY}` },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: { id?: string }[] };
+    return (json.data ?? []).map((m) => m.id).filter((x): x is string => !!x);
+  } catch {
+    return [];
+  }
 }

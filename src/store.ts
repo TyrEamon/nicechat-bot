@@ -89,6 +89,19 @@ export class Store {
     return this.putJSON(`intercepted:${id}`, data, 60 * 60 * 24 * 30);
   }
 
+  // ---- active AI model override ----
+  getActiveModel(): Promise<string | null> {
+    return this.kv.get('cfg:model');
+  }
+
+  setActiveModel(model: string): Promise<void> {
+    return this.kv.put('cfg:model', model);
+  }
+
+  clearActiveModel(): Promise<void> {
+    return this.kv.delete('cfg:model');
+  }
+
   // ---- conversation context ----
   async getContext(key: string): Promise<ChatTurn[]> {
     return (await this.getJSON<ChatTurn[]>(`ctx:${key}`)) ?? [];

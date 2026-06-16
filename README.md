@@ -120,5 +120,6 @@ npm run deploy
 - reply 转发消息 + 文本 → 回复该用户
 - reply 转发消息 + `/ai <意向>` → AI 代笔回复该用户
 - `/ai <问题>` → 与私人助理对话
+- `/model` → 查看当前模型；`/model list` 列出可用模型；`/model <名字>` 切换；`/model default` 恢复默认
 - `/to <uid> 内容` → 主动给某用户发消息
 - `/block` / `/unblock`（reply 或带 uid）→ 拉黑/解封

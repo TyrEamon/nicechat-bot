@@ -18,15 +18,15 @@
   // Non-sensitive config. Secrets (BOT_TOKEN / BOT_SECRET / AI_API_KEY) go via:
   //   wrangler secret put BOT_TOKEN
   "vars": {
-    "ADMIN_UID": "",
+    "ADMIN_UID": "8040798522",
 
     "RELAY_MODE": "private",        // private (enabled) | group (reserved, not enabled)
     "ADMIN_GROUP_ID": "",           // only for group mode; leave empty for now
 
-    "AI_BASE_URL": "",              // your relay station, OpenAI-compatible base url
-    "AI_MODEL": "gpt-4o-mini",
+    "AI_BASE_URL": "https://cliproxy.mtcacg.top/v1", // your relay station, OpenAI-compatible base url
+    "AI_MODEL": "gpt-5.5",
     "AI_TIMEOUT_MS": "2500",
-    "AI_PROVIDER": "auto",          // relay | workers_ai | auto
+    "AI_PROVIDER": "relay",         // relay | workers_ai | auto
     "AI_FALLBACK_TO_CF": "true",
     "CF_AI_MODEL": "@cf/meta/llama-3.1-8b-instruct",
 
@@ -38,8 +38,8 @@
     "VERIFY_QUESTION": "",
     "VERIFY_ANSWER": "",
 
-    "WELCOME_MESSAGE": "你好，我是这台双向机器人。请先通过一个简单验证再开始对话。",
-    "AUTO_GREETING": "您好，这里是主人的助理，消息已转达，请稍候回复。",
+    "WELCOME_MESSAGE": "喵～你好呀，这里是主人的专属双向小助手！为了挡住坏坏的广告机器人，请先回答一个超简单的小问题完成验证，然后就可以开始聊天啦～",
+    "AUTO_GREETING": "喵～你好呀！我是主人的猫娘小助理，你的消息已经稳稳收到并转达给主人啦，请稍等主人回复你哦～(=^･ω･^=)",
     "AI_REPLY_PREVIEW": "preview",  // preview | send
     "AI_CONTEXT_ROUNDS": "6"
   }

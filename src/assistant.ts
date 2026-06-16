@@ -14,7 +14,8 @@ export async function handleAssistant(question: string, env: Env, store: Store, 
   const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
   const history = await store.getContext('admin');
   history.push({ role: 'user', content: question });
-  const answer = await chatComplete(history, env, ASSISTANT_PROMPT);
+  const model = (await store.getActiveModel()) || env.AI_MODEL;
+  const answer = await chatComplete(history, env, ASSISTANT_PROMPT, model);
   await store.appendContext('admin', { role: 'user', content: question }, rounds);
   await store.appendContext('admin', { role: 'assistant', content: answer }, rounds);
   await tg.sendMessage(adminId, answer);
@@ -32,7 +33,8 @@ export async function handleGhostwrite(
   const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
   const ctx = await store.getContext(String(userId));
   const messages = [...ctx, { role: 'user' as const, content: `主人的回复意向：${intent}` }];
-  const draft = await chatComplete(messages, env, GHOST_PROMPT);
+  const model = (await store.getActiveModel()) || env.AI_MODEL;
+  const draft = await chatComplete(messages, env, GHOST_PROMPT, model);
 
   if ((env.AI_REPLY_PREVIEW || 'preview') === 'send') {
     await tg.sendMessage(userId, draft);
