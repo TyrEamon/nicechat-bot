@@ -148,7 +148,7 @@ AI 判定广告/骚扰 -> 记录拦截 -> 累计违规次数
 | `AI_FALLBACK_TO_CF` | 否 | `true` | 中转站失败时回落 Workers AI |
 | `CF_AI_MODEL` | 否 | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Workers AI 备用模型 |
 | `FILTER_ENABLED` | 否 | `true` | AI 过滤总开关 |
-| `FILTER_THRESHOLD` | 否 | `0.6` | 拦截置信度阈值,越低越严格 |
+| `FILTER_THRESHOLD` | 否 | `0.75` | 拦截置信度阈值,越低越严格;建议先偏宽松防误杀 |
 | `BLOCK_KEYWORDS` | 否 | 留空 | 硬拦截关键词,用 `|` 或换行分隔 |
 | `VERIFY_MODE` | 否 | `math` | 首次验证方式:`math` / `quiz` |
 | `VERIFY_QUESTION` | 否 | 留空 | `quiz` 模式问题 |
@@ -225,6 +225,7 @@ https://<你的worker域名>/health
 | `/intercepts [数量]` | 查看最近拦截记录 |
 | `/ban <uid>` | 手动封禁用户;也可 reply 后 `/ban` |
 | `/unban <uid>` | 解封用户并清空违规/申诉次数 |
+| `/forgive <uid>` | 清空用户误伤/违规计数;也可 reply 后 `/forgive` |
 
 被封禁用户可发送:
 
@@ -275,6 +276,7 @@ GROUP_AI_CONTEXT_ROUNDS=4
 - 不要把 `BOT_TOKEN`、`BOT_SECRET`、`AI_API_KEY`、`SEARCH_API_KEY` 写进仓库。
 - `BOT_SECRET` 会校验 Telegram webhook 请求头,避免伪造请求。
 - 管理命令必须由 `ADMIN_UID` 发出才会执行。
+- 过滤器默认偏向放行正常商务/项目沟通;只有明确广告、诈骗、垃圾骚扰才拦截。误伤时用 `/forgive <uid>` 清空计数。
 - 截图中请避免公开 bot token、API key、完整个人隐私信息。Telegram `uid` 不等于密钥,但仍属于可识别信息,公开仓库展示前建议打码。
 - 被 ban 用户后续消息不会再走 AI,能减少 token 消耗和骚扰。
 

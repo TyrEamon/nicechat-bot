@@ -28,6 +28,7 @@ export default {
         { command: 'intercepts', description: '查看最近拦截记录' },
         { command: 'ban', description: '封禁用户（reply转发消息或带uid）' },
         { command: 'unban', description: '解封用户（reply转发消息或带uid）' },
+        { command: 'forgive', description: '清空用户误伤/违规计数（reply或带uid）' },
       ];
       if (env.ADMIN_UID) {
         await tg.setMyCommands(adminCommands, { type: 'chat', chat_id: Number(env.ADMIN_UID) });
@@ -149,7 +150,7 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
   if (text && (env.FILTER_ENABLED ?? 'true') === 'true') {
     const activeModel = (await store.getActiveModel()) || env.AI_MODEL;
     const c = await classifyMessage(text, env, activeModel);
-    if (shouldIntercept(c, env)) {
+    if (shouldIntercept(c, env, text)) {
       const violationCount = await store.incrementViolation(userId);
       const id = `${userId}-${msg.message_id}`;
       await store.saveIntercepted({
@@ -157,6 +158,7 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
         userId,
         text,
         category: c.category,
+        confidence: c.confidence,
         reason: c.reason,
         provider: c.provider,
         time: Date.now(),

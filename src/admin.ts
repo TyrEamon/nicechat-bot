@@ -43,7 +43,8 @@ export async function handleAdminMessage(
     }
     const lines = items.map((item, index) => {
       const time = new Date(item.time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-      return `${index + 1}. uid:${item.userId} | ${item.category} | ${item.provider} | 次数:${item.violationCount ?? '-'}\n${time}\n原因：${item.reason}\n内容：${item.text.slice(0, 120)}`;
+      const confidence = typeof item.confidence === 'number' ? item.confidence.toFixed(2) : '-';
+      return `${index + 1}. uid:${item.userId} | ${item.category} | ${item.provider} | 置信:${confidence} | 次数:${item.violationCount ?? '-'}\n${time}\n原因：${item.reason}\n内容：${item.text.slice(0, 120)}`;
     });
     await tg.sendLong(adminId, `最近拦截记录：\n\n${lines.join('\n\n')}`);
     return;
@@ -62,6 +63,18 @@ export async function handleAdminMessage(
     }
     await store.block(uid, 'manual ban', 'manual');
     await tg.sendMessage(adminId, `已拉黑 uid:${uid}`);
+    return;
+  }
+
+  if (text.startsWith('/forgive')) {
+    const uid = await targetUid(text, replied, store);
+    if (!uid) {
+      await tg.sendMessage(adminId, '用法：reply 用户消息后发 /forgive，或 /forgive <uid>');
+      return;
+    }
+    await store.clearViolations(uid);
+    await store.clearAppeals(uid);
+    await tg.sendMessage(adminId, `已清空 uid:${uid} 的违规/申诉计数。`);
     return;
   }
 

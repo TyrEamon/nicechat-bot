@@ -2,9 +2,11 @@ import type { Env, Classification, SpamCategory, ChatTurn } from './types';
 import { keywordHit } from './moderation';
 
 const SYSTEM_PROMPT =
-  '你是一个消息安全分类器。判断用户发来的一条 Telegram 消息属于哪一类，并只返回一个 JSON 对象，' +
-  '不要任何额外文字。类别取值：normal(正常)、ad(广告营销)、scam(诈骗)、spam(垃圾骚扰)。' +
-  '输出格式：{"category":"normal|ad|scam|spam","confidence":0~1,"reason":"简短中文理由"}';
+  '你是一个 Telegram 私聊门卫，只拦截明确的广告、诈骗和垃圾骚扰。判断用户发来的一条消息属于哪一类，并只返回一个 JSON 对象，不要任何额外文字。' +
+  '类别取值：normal(正常)、ad(明确广告营销)、scam(诈骗)、spam(垃圾骚扰)。' +
+  '重要规则：正常商务沟通、项目合作、咨询报价、询问是否可以聊广告、提到“可能涉及广告/推广/合作”的礼貌开场，都应判为 normal，confidence 不超过 0.4。' +
+  '只有出现明确批量投放、引流链接、刷量、博彩色情、贷款返利、虚假中奖、钱包助记词、钓鱼链接、重复骚扰、强推产品服务等明显意图时，才判为 ad/scam/spam。' +
+  '不确定时一律判 normal。输出格式：{"category":"normal|ad|scam|spam","confidence":0~1,"reason":"简短中文理由"}';
 
 function parseClassification(raw: string): Omit<Classification, 'provider'> | null {
   const match = raw.match(/\{[\s\S]*\}/);
@@ -88,9 +90,31 @@ export async function classifyMessage(text: string, env: Env, model = env.AI_MOD
 
 const BLOCK_CATEGORIES: SpamCategory[] = ['ad', 'scam', 'spam'];
 
-export function shouldIntercept(c: Classification, env: Env): boolean {
+function isLowRiskBusinessOpening(c: Classification): boolean {
+  if (c.category !== 'ad') return false;
+  const reason = c.reason.toLowerCase();
+  return (
+    reason.includes('项目') ||
+    reason.includes('合作') ||
+    reason.includes('商务') ||
+    reason.includes('详谈') ||
+    reason.includes('可能')
+  );
+}
+
+function isBusinessOpeningText(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const hasBusinessIntent = /项目|合作|详谈|商务|报价|需求|咨询/.test(normalized);
+  const hasSoftAdMention = /可能.*(广告|推广)|涉及.*(广告|推广)|聊.*(广告|推广)/.test(normalized);
+  const hasHardSpamSignal = /https?:\/\/|t\.me\/|返利|兼职|刷单|博彩|彩票|贷款|私服|引流|加群|二维码|钱包|助记词|空投|中奖/.test(normalized);
+  return hasBusinessIntent && (hasSoftAdMention || normalized.length <= 80) && !hasHardSpamSignal;
+}
+
+export function shouldIntercept(c: Classification, env: Env, text = ''): boolean {
   if ((env.FILTER_ENABLED ?? 'true') !== 'true') return false;
-  const threshold = Number(env.FILTER_THRESHOLD || '0.6');
+  const threshold = Number(env.FILTER_THRESHOLD || '0.75');
+  if (text && isBusinessOpeningText(text)) return false;
+  if (isLowRiskBusinessOpening(c) && c.confidence < 0.85) return false;
   return BLOCK_CATEGORIES.includes(c.category) && c.confidence >= threshold;
 }
 

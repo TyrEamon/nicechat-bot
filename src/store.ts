@@ -20,6 +20,7 @@ export interface InterceptedRecord {
   userId: number;
   text: string;
   category: string;
+  confidence?: number;
   reason: string;
   provider: string;
   time: number;
