@@ -3,7 +3,7 @@ import { makeStore, Store } from './store';
 import { Telegram, displayName } from './telegram';
 import { isAdmin } from './moderation';
 import { ensureVerified } from './verify';
-import { classifyMessage, shouldIntercept } from './ai-filter';
+import { classifyMessage, shouldIntercept, chatCompleteStream } from './ai-filter';
 import { makeRelay } from './relay';
 import { handleAdminMessage } from './admin';
 
@@ -29,6 +29,35 @@ export default {
       if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
       const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getWebhookInfo`);
       return new Response(await r.text(), { headers: { 'content-type': 'application/json; charset=utf-8' } });
+    }
+
+    if (url.pathname === '/selftest') {
+      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
+      const tg = new Telegram(env.BOT_TOKEN);
+      const trace: Record<string, unknown> = {};
+      // step 1: send a telegram message to admin
+      try {
+        const m = await tg.sendMessage(env.ADMIN_UID, '🔧 selftest: 这是来自 Worker 的测试消息');
+        trace.sendMessage = { ok: true, message_id: (m as { message_id: number }).message_id };
+      } catch (e) {
+        trace.sendMessage = { ok: false, error: (e as Error).message };
+      }
+      // step 2: stream a short AI completion
+      const t0 = Date.now();
+      try {
+        let deltas = 0;
+        const out = await chatCompleteStream(
+          [{ role: 'user', content: '用一句话自我介绍' }],
+          env,
+          '你是助理',
+          env.AI_MODEL,
+          () => { deltas++; },
+        );
+        trace.stream = { ok: true, ms: Date.now() - t0, deltas, text: out.slice(0, 200) };
+      } catch (e) {
+        trace.stream = { ok: false, ms: Date.now() - t0, error: (e as Error).message };
+      }
+      return new Response(JSON.stringify(trace, null, 2), { headers: { 'content-type': 'application/json; charset=utf-8' } });
     }
 
     if (url.pathname === '/diag') {
