@@ -1,27 +1,65 @@
 import type { Env } from './types';
 import { Store } from './store';
 import { Telegram } from './telegram';
-import { chatComplete } from './ai-filter';
+import { chatCompleteStream } from './ai-filter';
 
 const ASSISTANT_PROMPT = '你是机器人主人的私人助理，简洁、专业地协助主人处理日常事务与问题。';
 const GHOST_PROMPT =
   '你在替机器人的主人回复一位陌生用户。请根据主人给出的“意向”和此前的会话上下文，' +
   '生成一条得体、简洁、礼貌的回复，直接输出回复正文，不要解释。';
 
+// Throttled message editor: edits at most every ~1.2s to respect Telegram rate limits.
+function makeThrottledEditor(tg: Telegram, chatId: number | string, messageId: number) {
+  let last = 0;
+  let lastText = '';
+  let pending: string | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const MIN_INTERVAL = 1200;
+
+  const flush = async () => {
+    if (pending === null || pending === lastText) return;
+    lastText = pending;
+    pending = null;
+    last = Date.now();
+    await tg.editMessageText(chatId, messageId, lastText.slice(0, 4000)).catch(() => {});
+  };
+
+  return {
+    update(full: string) {
+      pending = full;
+      const now = Date.now();
+      if (now - last >= MIN_INTERVAL) {
+        if (timer) { clearTimeout(timer); timer = null; }
+        void flush();
+      } else if (!timer) {
+        timer = setTimeout(() => { timer = null; void flush(); }, MIN_INTERVAL - (now - last));
+      }
+    },
+    async finalize(full: string) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      pending = full;
+      lastText = '';
+      await flush();
+    },
+  };
+}
+
 // /ai <question>  (no reply): chat with the personal assistant.
 export async function handleAssistant(question: string, env: Env, store: Store, tg: Telegram): Promise<void> {
   const adminId = env.ADMIN_UID;
   const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
+  const ack = await tg.sendMessage(adminId, '🤔 思考中…');
+  const editor = makeThrottledEditor(tg, adminId, ack.message_id);
   try {
     const history = await store.getContext('admin');
     history.push({ role: 'user', content: question });
     const model = (await store.getActiveModel()) || env.AI_MODEL;
-    const answer = await chatComplete(history, env, ASSISTANT_PROMPT, model);
+    const answer = await chatCompleteStream(history, env, ASSISTANT_PROMPT, model, (full) => editor.update(full));
+    await editor.finalize(answer || '(AI 返回了空内容)');
     await store.appendContext('admin', { role: 'user', content: question }, rounds);
     await store.appendContext('admin', { role: 'assistant', content: answer }, rounds);
-    await tg.sendLong(adminId, answer || '(AI 返回了空内容)');
   } catch (e) {
-    await tg.sendMessage(adminId, `⚠️ 助理出错：${(e as Error).message}`).catch(() => {});
+    await tg.editMessageText(adminId, ack.message_id, `⚠️ 助理出错：${(e as Error).message}`).catch(() => {});
   }
 }
 
@@ -35,27 +73,27 @@ export async function handleGhostwrite(
 ): Promise<void> {
   const adminId = env.ADMIN_UID;
   const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
+  const ack = await tg.sendMessage(adminId, '✍️ 代笔中…');
+  const editor = makeThrottledEditor(tg, adminId, ack.message_id);
   let draft: string;
   try {
     const ctx = await store.getContext(String(userId));
     const messages = [...ctx, { role: 'user' as const, content: `主人的回复意向：${intent}` }];
     const model = (await store.getActiveModel()) || env.AI_MODEL;
-    draft = await chatComplete(messages, env, GHOST_PROMPT, model);
+    draft = await chatCompleteStream(messages, env, GHOST_PROMPT, model, (full) => editor.update(full));
   } catch (e) {
-    await tg.sendMessage(adminId, `⚠️ 代笔出错：${(e as Error).message}`).catch(() => {});
+    await tg.editMessageText(adminId, ack.message_id, `⚠️ 代笔出错：${(e as Error).message}`).catch(() => {});
     return;
   }
 
   if ((env.AI_REPLY_PREVIEW || 'preview') === 'send') {
+    await editor.finalize(draft);
     await tg.sendMessage(userId, draft);
     await store.appendContext(String(userId), { role: 'assistant', content: draft }, rounds);
-    await tg.sendMessage(adminId, `✅ 已按意向回复 uid:${userId}：\n${draft}`);
+    await tg.sendMessage(adminId, `✅ 已按意向回复 uid:${userId}`);
   } else {
-    await tg.sendMessage(
-      adminId,
-      `📝 代笔草稿（回复 uid:${userId}）：\n\n${draft}\n\n如满意，请 reply 本条草稿并发送 /send 确认发出，或直接 reply 用户消息手动回复。`,
+    await editor.finalize(
+      `📝 代笔草稿（回复 uid:${userId}）：\n\n${draft}\n\n满意的话用 /to ${userId} <内容> 发出，或 reply 用户消息手动回复。`,
     );
-    // Stash draft so /send can pick it up.
-    await store.appendContext(`draft:${userId}`, { role: 'assistant', content: draft }, 1);
   }
 }

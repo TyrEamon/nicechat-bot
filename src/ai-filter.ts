@@ -102,7 +102,7 @@ export async function chatComplete(messages: ChatTurn[], env: Env, systemPrompt:
   if (provider === 'relay' || provider === 'auto') {
     if (env.AI_BASE_URL && env.AI_API_KEY) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
+      const timeout = setTimeout(() => controller.abort(), Number(env.AI_TIMEOUT_MS || '60000'));
       try {
         const res = await fetch(`${env.AI_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
           method: 'POST',
@@ -143,5 +143,71 @@ export async function listModels(env: Env): Promise<string[]> {
     return (json.data ?? []).map((m) => m.id).filter((x): x is string => !!x);
   } catch {
     return [];
+  }
+}
+
+// Streaming chat completion. Calls onDelta as text arrives; returns the full text.
+// Falls back to non-streaming chatComplete on failure.
+export async function chatCompleteStream(
+  messages: ChatTurn[],
+  env: Env,
+  systemPrompt: string,
+  model: string,
+  onDelta: (full: string) => Promise<void> | void,
+): Promise<string> {
+  const full = [{ role: 'system' as const, content: systemPrompt }, ...messages];
+  if (!env.AI_BASE_URL || !env.AI_API_KEY) {
+    return chatComplete(messages, env, systemPrompt, model);
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(env.AI_TIMEOUT_MS || '120000'));
+  try {
+    const res = await fetch(`${env.AI_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
+      body: JSON.stringify({ model, messages: full, stream: true }),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) {
+      clearTimeout(timeout);
+      return chatComplete(messages, env, systemPrompt, model);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let acc = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const obj = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+          const piece = obj.choices?.[0]?.delta?.content;
+          if (piece) {
+            acc += piece;
+            await onDelta(acc);
+          }
+        } catch {
+          /* ignore partial json */
+        }
+      }
+    }
+    clearTimeout(timeout);
+    // Some relays accept stream:true for non-streaming models but send a plain
+    // JSON body, yielding no deltas. Fall back to a normal request in that case.
+    if (!acc.trim()) {
+      return chatComplete(messages, env, systemPrompt, model);
+    }
+    return acc;
+  } catch {
+    clearTimeout(timeout);
+    return chatComplete(messages, env, systemPrompt, model);
   }
 }
