@@ -12,13 +12,17 @@ const GHOST_PROMPT =
 export async function handleAssistant(question: string, env: Env, store: Store, tg: Telegram): Promise<void> {
   const adminId = env.ADMIN_UID;
   const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
-  const history = await store.getContext('admin');
-  history.push({ role: 'user', content: question });
-  const model = (await store.getActiveModel()) || env.AI_MODEL;
-  const answer = await chatComplete(history, env, ASSISTANT_PROMPT, model);
-  await store.appendContext('admin', { role: 'user', content: question }, rounds);
-  await store.appendContext('admin', { role: 'assistant', content: answer }, rounds);
-  await tg.sendMessage(adminId, answer);
+  try {
+    const history = await store.getContext('admin');
+    history.push({ role: 'user', content: question });
+    const model = (await store.getActiveModel()) || env.AI_MODEL;
+    const answer = await chatComplete(history, env, ASSISTANT_PROMPT, model);
+    await store.appendContext('admin', { role: 'user', content: question }, rounds);
+    await store.appendContext('admin', { role: 'assistant', content: answer }, rounds);
+    await tg.sendLong(adminId, answer || '(AI 返回了空内容)');
+  } catch (e) {
+    await tg.sendMessage(adminId, `⚠️ 助理出错：${(e as Error).message}`).catch(() => {});
+  }
 }
 
 // /ai <intent> while replying to a forwarded message: ghostwrite a reply for the user.
@@ -31,10 +35,16 @@ export async function handleGhostwrite(
 ): Promise<void> {
   const adminId = env.ADMIN_UID;
   const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
-  const ctx = await store.getContext(String(userId));
-  const messages = [...ctx, { role: 'user' as const, content: `主人的回复意向：${intent}` }];
-  const model = (await store.getActiveModel()) || env.AI_MODEL;
-  const draft = await chatComplete(messages, env, GHOST_PROMPT, model);
+  let draft: string;
+  try {
+    const ctx = await store.getContext(String(userId));
+    const messages = [...ctx, { role: 'user' as const, content: `主人的回复意向：${intent}` }];
+    const model = (await store.getActiveModel()) || env.AI_MODEL;
+    draft = await chatComplete(messages, env, GHOST_PROMPT, model);
+  } catch (e) {
+    await tg.sendMessage(adminId, `⚠️ 代笔出错：${(e as Error).message}`).catch(() => {});
+    return;
+  }
 
   if ((env.AI_REPLY_PREVIEW || 'preview') === 'send') {
     await tg.sendMessage(userId, draft);
