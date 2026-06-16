@@ -82,6 +82,9 @@
 7. **注册 webhook**：浏览器访问
    `https://<你的worker域名>/registerWebhook?secret=<你填的BOT_SECRET>`
    看到 `✅ webhook set to ...` 即成功。
+7.1 **注册命令菜单**（可选）：访问
+   `https://<你的worker域名>/setcommands?secret=<你填的BOT_SECRET>`
+   陌生人菜单只显示 `/start`，你（ADMIN_UID）的私聊显示完整管理菜单。
 8. **测试**：换个小号给 bot 发消息走验证→转发；你这边 reply 那条转发消息试回复；发 `/ai 你好` 试助理。
 
 ---

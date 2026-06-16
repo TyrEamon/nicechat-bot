@@ -41,6 +41,10 @@ export class Telegram {
     return this.call('answerCallbackQuery', { callback_query_id: id, text });
   }
 
+  setMyCommands(commands: { command: string; description: string }[], scope?: Record<string, unknown>) {
+    return this.call('setMyCommands', { commands, ...(scope ? { scope } : {}) });
+  }
+
   setWebhook(url: string, secretToken: string) {
     return this.call('setWebhook', {
       url,

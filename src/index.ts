@@ -13,6 +13,25 @@ export default {
 
     if (url.pathname === '/health') return new Response('ok');
 
+    if (url.pathname === '/setcommands') {
+      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
+      const tg = new Telegram(env.BOT_TOKEN);
+      // Public menu: strangers only see /start
+      await tg.setMyCommands([{ command: 'start', description: '开始使用 / 重新验证' }], { type: 'default' });
+      // Admin menu: full management commands, only in the admin's private chat
+      const adminCommands = [
+        { command: 'ai', description: '与AI助理对话；reply转发消息则按意向代笔' },
+        { command: 'model', description: '查看/切换模型：list 列表，<名字> 切换，default 恢复' },
+        { command: 'to', description: '主动给用户发消息：/to <uid> 内容' },
+        { command: 'block', description: '拉黑用户（reply转发消息或带uid）' },
+        { command: 'unblock', description: '解封用户（reply转发消息或带uid）' },
+      ];
+      if (env.ADMIN_UID) {
+        await tg.setMyCommands(adminCommands, { type: 'chat', chat_id: Number(env.ADMIN_UID) });
+      }
+      return new Response('✅ commands set (public: start; admin: full menu)');
+    }
+
     if (url.pathname === '/registerWebhook') {
       if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
       const tg = new Telegram(env.BOT_TOKEN);
