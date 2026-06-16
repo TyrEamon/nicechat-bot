@@ -13,6 +13,24 @@ export default {
 
     if (url.pathname === '/health') return new Response('ok');
 
+    if (url.pathname === '/lasterror') {
+      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
+      const e = await env.TG_BOT_KV.get('debug:lasterror');
+      return new Response(e || '(无错误记录)', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    }
+
+    if (url.pathname === '/last') {
+      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
+      const last = await env.TG_BOT_KV.get('debug:last');
+      return new Response(last || '(还没有收到任何 webhook 更新)', { headers: { 'content-type': 'application/json; charset=utf-8' } });
+    }
+
+    if (url.pathname === '/webhookinfo') {
+      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
+      const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getWebhookInfo`);
+      return new Response(await r.text(), { headers: { 'content-type': 'application/json; charset=utf-8' } });
+    }
+
     if (url.pathname === '/diag') {
       if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
       const out: Record<string, unknown> = {
@@ -84,8 +102,14 @@ export default {
         return new Response('forbidden', { status: 403 });
       }
       const update = (await request.json()) as TgUpdate;
+      // Debug: stash the raw update so /last can show what Telegram sent.
+      ctx.waitUntil(env.TG_BOT_KV.put('debug:last', JSON.stringify(update, null, 2), { expirationTtl: 3600 }));
       // Process in background; ack Telegram immediately.
-      ctx.waitUntil(handleUpdate(update, env).catch((e) => console.error('handleUpdate error', e)));
+      ctx.waitUntil(
+        handleUpdate(update, env).catch((e) =>
+          env.TG_BOT_KV.put('debug:lasterror', String((e as Error).stack || e), { expirationTtl: 3600 }),
+        ),
+      );
       return new Response('ok');
     }
 
