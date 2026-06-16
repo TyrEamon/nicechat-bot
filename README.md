@@ -1,140 +1,261 @@
 # nicechat-bot
 
-部署在 Cloudflare Workers 上的 **Telegram 个人双向聊天机器人**，带 AI 智能过滤。
+部署在 Cloudflare Workers 上的 Telegram 个人双向聊天机器人。它不是给陌生人当免费 AI 聊天窗口,而是给你做一个带 AI 门卫、前台、代笔和私人助理的私聊中继工具。
 
-陌生人给你发消息 → AI 当**门卫**过滤广告/诈骗/垃圾 → **前台**自动回一句身份问候并把消息转发给你 → 你直接回复，或用 `/ai <意向>` 让 AI **代笔**。你也能随时 `/ai <问题>` 和 AI **私人助理**聊天。陌生人**永不**直接与 AI 对话。
+陌生人给 bot 发消息后,系统会先做人机验证和 AI 过滤。正常消息转发给你,广告/诈骗/骚扰会被拦截并累计违规次数。你可以直接 reply 用户消息回复,也可以让 AI 根据你的意向生成代笔草稿。你自己也可以和 AI 助理聊天,并可接入搜索 API 获取联网结果。
 
+> 当前版本以纯文本为主。图片/文件可以作为 Telegram 消息转发,但不会进入 AI 多模态理解流程。
 
-详见 `docs/PRD.md`、`docs/IMPLEMENTATION.md`、`docs/CONVENTIONS.md`。
+## 截图
 
-## 功能
+### AI 助理对话
 
-- 双向消息中继（个人私聊模式，靠 reply 区分用户；管理群/话题模式 `RELAY_MODE=group` 预留未启用）
-- 新用户首次人机验证（默认算术题）
-- AI 多级过滤：你的中转站 → Cloudflare Workers AI（额度备份）→ 关键词 → 放行
-- 被拦消息进"已拦截"区，不打扰你
-- 前台身份问候（模板，零额度）
-- `/ai` 代笔（按意向+上下文代写）与私人助理（多轮对话）
-- 拉黑/解封、频率限制、Webhook 密钥校验
+![AI 助理对话](img/assistant-chat.png)
 
----
+### 自动搜索与来源
+
+![自动搜索回答](img/search-answer-full.png)
+
+### 封禁与申诉
+
+![封禁申诉流程](img/appeal-flow.png)
+
+### 管理员收到申诉
+
+![管理员申诉通知](img/admin-appeal-redacted.jpg)
+
+## 核心功能
+
+- **个人双向中继**:陌生人私聊 bot,消息转发到你的私聊;你 reply 转发消息即可回复对方。
+- **AI 过滤**:广告、诈骗、垃圾骚扰先被 AI 分类,命中后不打扰管理员。
+- **自动封禁**:同一用户被 AI 拦截累计 `AUTO_BAN_THRESHOLD` 次后自动 ban,后续消息不再走 AI,节省 token。
+- **封禁申诉**:被 ban 用户可 `/appeal <说明>` 申诉,次数由 `APPEAL_MAX_ATTEMPTS` 控制;管理员可 `/unban <uid>` 解封。
+- **AI 前台**:正常陌生人首次通过后收到模板问候,消息同步转给你。
+- **AI 代笔**:reply 用户消息后发送 `/ai <意向>`,生成草稿并提供“确认回复 / 重新生成 / 自行回复”按钮。
+- **AI 私人助理**:你可 `/ai <问题>` 或开启 `/aimode on` 后直接发普通消息与助理聊天。
+- **模型切换**:`/model list` 查询中转站可用模型,`/model <模型名>` 动态切换。
+- **自动搜索**:配置 Brave Search 或 Tavily 后,助理会自行判断是否需要联网搜索,并在回答中附来源。
+- **Cloudflare 部署**:Cloudflare Workers + KV + Workers AI 绑定,无需自建服务器。
+
+## 模型能力说明
+
+### OpenAI 兼容接口
+
+本项目主模型通道是 OpenAI 兼容的 `chat/completions` 接口。只要你的中转站/服务商兼容以下格式,就可以接入:
+
+```text
+POST {AI_BASE_URL}/chat/completions
+Authorization: Bearer {AI_API_KEY}
+```
+
+常用配置:
+
+```text
+AI_PROVIDER=relay
+AI_BASE_URL=https://your-relay.example/v1
+AI_MODEL=gpt-5.5
+AI_TIMEOUT_MS=80000
+```
+
+适合用来跑较强模型、慢思考模型、代笔、搜索总结和私人助理。
+
+### Cloudflare Workers AI
+
+项目也配置了 Cloudflare Workers AI 绑定:
+
+```jsonc
+"ai": { "binding": "AI" }
+```
+
+对应变量:
+
+```text
+AI_PROVIDER=workers_ai      # 只用 Cloudflare Workers AI
+AI_PROVIDER=auto            # 主用中转站,失败时回落 Workers AI
+AI_FALLBACK_TO_CF=true
+CF_AI_MODEL=@cf/meta/llama-3.3-70b-instruct-fp8-fast
+```
+
+Workers AI 足够承担基础兜底、轻量过滤、简单问答等场景。对于高质量长回答、复杂推理、中文代笔和联网搜索总结,建议主通道仍使用你的 OpenAI 兼容中转站。Cloudflare 的可用模型会变化,如果 `/diag` 显示 Workers AI 模型不可用,换一个当前可用的 `CF_AI_MODEL` 即可。
+
+### 够不够用?
+
+- **过滤广告/骚扰**:够用。即使中转站不可用,关键词与 Workers AI 也能做兜底。
+- **个人助理/代笔**:推荐用中转站强模型,体验更好。
+- **自动搜索总结**:搜索 API 提供结果,模型负责整理,中转站强模型更适合。
+- **大图/多模态**:当前未实现 AI 看图,不建议把图片塞 base64 到 Worker 链路里。
+
+## 工作流程
+
+```text
+陌生用户 -> Telegram Bot Webhook -> Cloudflare Worker
+  -> 黑名单检查
+  -> 首次验证
+  -> AI/关键词过滤
+  -> 正常消息转发给管理员
+  -> 管理员 reply 直接回复,或让 AI 代笔
+```
+
+被拦截用户:
+
+```text
+AI 判定广告/骚扰 -> 记录拦截 -> 累计违规次数
+  -> 达到阈值自动封禁
+  -> 后续消息不再走 AI
+  -> 用户可 /appeal 申诉
+  -> 管理员 /unban 解封
+```
 
 ## 配置变量总表
 
-手动网页部署时，下列配置都要在 Cloudflare 后台对应位置添加。
+手动网页部署时,普通变量可由 `wrangler.jsonc` 提供。Secret 必须在 Cloudflare 后台单独添加,不要写进仓库。
 
-### 一、Secrets（机密变量 — 必须加密，不可明文）
+### Secrets
 
-后台位置：`Workers & Pages` → 你的 Worker → `Settings` → `Variables and Secrets` → 添加时勾选 **Encrypt / Secret**。
+后台位置:`Workers & Pages` -> 你的 Worker -> `Settings` -> `Variables and Secrets` -> 添加时选择 Secret/Encrypt。
 
 | 变量名 | 必填 | 说明 | 示例 |
-|--------|------|------|------|
-| `BOT_TOKEN` | ✅ | Telegram bot token，@BotFather 给的 | `123456:ABC-DEF...` |
-| `BOT_SECRET` | ✅ | 自定义随机字符串，校验 webhook 来源（注册 webhook 时也用它） | 自己生成一长串随机字符 |
-| `AI_API_KEY` | ✅ | 你的中转站 API key | `sk-xxxx` |
-| `SEARCH_API_KEY` |  | Brave Search 或 Tavily 的搜索 API key；不填则自动搜索关闭 | `BSA...` / `tvly-...` |
+| --- | --- | --- | --- |
+| `BOT_TOKEN` | 是 | Telegram bot token,@BotFather 获取 | `123456:ABC...` |
+| `BOT_SECRET` | 是 | 自定义 webhook 校验密钥,注册 webhook 时也用它 | 一长串随机字符串 |
+| `AI_API_KEY` | 是 | OpenAI 兼容中转站 API key | `sk-...` |
+| `SEARCH_API_KEY` | 否 | Brave Search 或 Tavily key;不填则自动搜索关闭 | `BSA...` / `tvly-...` |
 
-### 二、Vars（普通环境变量 — 明文即可）
-
-后台同一页面，添加时**不勾选** Secret。
+### Vars
 
 | 变量名 | 必填 | 默认/建议值 | 说明 |
-|--------|------|------------|------|
-| `ADMIN_UID` | ✅ | （你的数字ID） | 你的 Telegram 用户 ID，@userinfobot 获取。鉴权核心 |
-| `RELAY_MODE` | ✅ | `private` | `private`=个人私聊（启用）；`group`=管理群/话题（预留，暂别用） |
-| `ADMIN_GROUP_ID` |  | （留空） | 仅 `group` 模式用，以 `-100` 开头。现在留空 |
-| `AI_BASE_URL` | ✅ | （中转站地址） | OpenAI 兼容 base url，**不要带** `/chat/completions`。如 `https://your-relay.com/v1` |
-| `AI_MODEL` | ✅ | `gpt-4o-mini` | 中转站使用的模型名 |
-| `AI_TIMEOUT_MS` |  | `2500` | 中转站调用超时（毫秒），超时自动降级 |
-| `AI_PROVIDER` |  | `auto` | `relay`=只用中转站；`workers_ai`=只用CF；`auto`=主备自动切换（推荐） |
-| `AI_FALLBACK_TO_CF` |  | `true` | 中转站失败时回落 Cloudflare Workers AI |
-| `CF_AI_MODEL` |  | `@cf/meta/llama-3.1-8b-instruct` | Workers AI 备用模型名 |
-| `FILTER_ENABLED` |  | `true` | AI 过滤总开关 |
-| `FILTER_THRESHOLD` |  | `0.6` | 判为垃圾的置信度阈值（0~1）。调高=更宽松不易误杀，调低=更严格 |
-| `BLOCK_KEYWORDS` |  | （留空） | 硬拦截关键词，用 `|` 或换行分隔。AI 不可用时的兜底 |
-| `VERIFY_MODE` |  | `math` | 首次验证方式。`math`=算术题（默认）；`quiz`=自定义问答 |
-| `VERIFY_QUESTION` |  | （留空） | `quiz` 模式的问题 |
-| `VERIFY_ANSWER` |  | （留空） | `quiz` 模式的答案 |
-| `WELCOME_MESSAGE` |  | 见下 | 用户发 `/start` 的欢迎语 |
-| `AUTO_GREETING` |  | 见下 | 前台自动身份问候语。**留空则不自动问候** |
-| `AI_REPLY_PREVIEW` |  | `preview` | 代笔模式。`preview`=草稿先给你确认；`send`=直接发给对方 |
-| `AI_CONTEXT_ROUNDS` |  | `6` | AI 多轮上下文保留轮数 |
-| `AUTO_SEARCH_ENABLED` |  | `true` | 自动搜索判断开关；只有配置 `SEARCH_API_KEY` 后才会真正搜索 |
-| `SEARCH_PROVIDER` |  | `brave` | 搜索服务：`brave` / `tavily` |
-| `SEARCH_MAX_RESULTS` |  | `5` | 每次搜索取回的结果数，建议 3~5 |
-| `SEARCH_DECISION_MODEL` |  | （留空） | 搜索决策用模型；留空则使用当前模型 |
-| `AUTO_BAN_THRESHOLD` |  | `3` | 被 AI 拦截累计达到该次数后自动封禁；设为 `0` 可关闭自动封禁 |
-| `BAN_MESSAGE` |  | 见配置 | 用户被封禁后收到的模板提示 |
-| `APPEAL_MAX_ATTEMPTS` |  | `2` | 被封禁用户可提交申诉的最大次数 |
-| `APPEAL_MESSAGE` |  | 见配置 | 用户提交申诉后收到的模板提示 |
+| --- | --- | --- | --- |
+| `ADMIN_UID` | 是 | 你的 Telegram 数字 ID | 管理员鉴权核心,@userinfobot 获取 |
+| `RELAY_MODE` | 是 | `private` | 个人私聊模式;`group` 预留 |
+| `ADMIN_GROUP_ID` | 否 | 留空 | 仅未来 group 模式使用 |
+| `AI_BASE_URL` | 是 | 你的中转站地址 | 不要带 `/chat/completions`,如 `https://xxx/v1` |
+| `AI_MODEL` | 是 | `gpt-5.5` | 默认聊天模型 |
+| `AI_TIMEOUT_MS` | 否 | `80000` | AI 请求超时;慢模型建议 60000~80000 |
+| `AI_PROVIDER` | 否 | `relay` | `relay` / `workers_ai` / `auto` |
+| `AI_FALLBACK_TO_CF` | 否 | `true` | 中转站失败时回落 Workers AI |
+| `CF_AI_MODEL` | 否 | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Workers AI 备用模型 |
+| `FILTER_ENABLED` | 否 | `true` | AI 过滤总开关 |
+| `FILTER_THRESHOLD` | 否 | `0.6` | 拦截置信度阈值,越低越严格 |
+| `BLOCK_KEYWORDS` | 否 | 留空 | 硬拦截关键词,用 `|` 或换行分隔 |
+| `VERIFY_MODE` | 否 | `math` | 首次验证方式:`math` / `quiz` |
+| `VERIFY_QUESTION` | 否 | 留空 | `quiz` 模式问题 |
+| `VERIFY_ANSWER` | 否 | 留空 | `quiz` 模式答案 |
+| `WELCOME_MESSAGE` | 否 | 自定义 | `/start` 欢迎语 |
+| `AUTO_GREETING` | 否 | 自定义 | 前台自动身份问候;留空则不发送 |
+| `AI_REPLY_PREVIEW` | 否 | `preview` | 代笔草稿模式;当前推荐 `preview` |
+| `AI_CONTEXT_ROUNDS` | 否 | `6` | 助理上下文保留轮数 |
+| `AUTO_SEARCH_ENABLED` | 否 | `true` | 自动搜索判断开关;需配置 `SEARCH_API_KEY` 才会搜索 |
+| `SEARCH_PROVIDER` | 否 | `brave` | `brave` / `tavily` |
+| `SEARCH_MAX_RESULTS` | 否 | `5` | 搜索结果数量 |
+| `SEARCH_DECISION_MODEL` | 否 | 留空 | 搜索决策模型;留空使用当前模型 |
+| `AUTO_BAN_THRESHOLD` | 否 | `3` | AI 拦截累计达到该次数后自动封禁;`0` 关闭 |
+| `BAN_MESSAGE` | 否 | 自定义 | 被封禁用户收到的提示模板 |
+| `APPEAL_MAX_ATTEMPTS` | 否 | `2` | 用户申诉次数上限 |
+| `APPEAL_MESSAGE` | 否 | 自定义 | 用户提交申诉后收到的提示模板 |
 
-文本类建议值：
-- `WELCOME_MESSAGE`：`你好，我是这台双向机器人。请先通过一个简单验证再开始对话。`
-- `AUTO_GREETING`：`您好，这里是主人的助理，消息已转达，请稍候回复。`
+### Bindings
 
-### 三、绑定（Bindings — 不是变量，单独配）
+| 绑定名 | 类型 | 说明 |
+| --- | --- | --- |
+| `TG_BOT_KV` | KV Namespace | 存用户、映射、封禁、草稿、上下文等状态 |
+| `AI` | Workers AI | Cloudflare Workers AI 备用/兜底模型绑定 |
 
-| 绑定 | 类型 | 后台位置 | 说明 |
-|------|------|----------|------|
-| `TG_BOT_KV` | KV Namespace | `Settings` → `Bindings` → `KV namespace` | Variable name 必须填 `TG_BOT_KV`；先去 `Storage & Databases` → `KV` 创建命名空间再绑定 |
-| `AI` | Workers AI | `Settings` → `Bindings` → `Workers AI` | Variable name 必须填 `AI`；无需额外建资源 |
+## 部署步骤
 
----
+1. 创建 Telegram bot:@BotFather 获取 `BOT_TOKEN`。
+2. 获取你的 Telegram 用户 ID:@userinfobot 获取 `ADMIN_UID`。
+3. Cloudflare 创建 Worker,连接 GitHub 仓库 `TyrEamon/nicechat-bot`。
+4. 创建 KV namespace,把 id 填入 `wrangler.jsonc` 的 `kv_namespaces[0].id`。
+5. 在 Cloudflare Worker 的 `Variables and Secrets` 添加 Secret:`BOT_TOKEN`、`BOT_SECRET`、`AI_API_KEY`,需要搜索再加 `SEARCH_API_KEY`。
+6. 确认普通 Vars 是否符合你的环境,尤其是 `ADMIN_UID`、`AI_BASE_URL`、`AI_MODEL`。
+7. 部署 Worker。
+8. 注册 webhook:
 
-## 网页手动部署步骤
+```text
+https://<你的worker域名>/registerWebhook?secret=<BOT_SECRET>
+```
 
-1. **建 bot**：@BotFather → 拿 `BOT_TOKEN`；@userinfobot → 拿你的 `ADMIN_UID`。
-2. **建 Worker**：`Workers & Pages` → `Create` → `Create Worker` → 起名（如 `nicechat-bot`）→ Deploy（先用默认 Hello World）。
-3. **传代码**：网页编辑器适合单文件，本项目是多文件 TS。**推荐**连 GitHub 自动部署：Worker → `Settings` → 连接 `TyrEamon/nicechat-bot` 仓库，Cloudflare 会按 `wrangler.jsonc` 自动构建部署。之后只改仓库即可。
-4. **建并绑 KV**：`Storage & Databases` → `KV` → 创建命名空间 → 回 Worker 的 `Settings` → `Bindings` 添加，名字填 `TG_BOT_KV`。
-5. **绑 Workers AI**：`Settings` → `Bindings` → 添加 `Workers AI`，名字填 `AI`。
-6. **填 Secrets + Vars**：按上面两张表，在 `Settings` → `Variables and Secrets` 全部填好。
-7. **注册 webhook**：浏览器访问
-   `https://<你的worker域名>/registerWebhook?secret=<你填的BOT_SECRET>`
-   看到 `✅ webhook set to ...` 即成功。
-7.1 **注册命令菜单**（可选）：访问
-   `https://<你的worker域名>/setcommands?secret=<你填的BOT_SECRET>`
-   陌生人菜单只显示 `/start`，你（ADMIN_UID）的私聊显示完整管理菜单。
-8. **测试**：换个小号给 bot 发消息走验证→转发；你这边 reply 那条转发消息试回复；发 `/ai 你好` 试助理。
+9. 注册命令菜单:
 
----
+```text
+https://<你的worker域名>/setcommands?secret=<BOT_SECRET>
+```
 
-## 注意事项
+10. 检查状态:
 
-- `wrangler.jsonc` 里 `kv_namespaces[0].id` 的 `REPLACE_WITH_YOUR_KV_ID`：若走 GitHub 自动部署，需替换成你建的 KV 真实 id（KV 命名空间详情页可见），否则构建报错。改完 push 即可。
-- `AI_BASE_URL` 末尾**别加** `/chat/completions`，代码会自动拼。带不带末尾 `/` 都行。
-- 改了 Secret/Var 后 Worker 一般自动生效；若没生效重新 Deploy 一次。
-- webhook 注册一次即可，除非换了域名或 `BOT_SECRET`。
+```text
+https://<你的worker域名>/health
+https://<你的worker域名>/diag?secret=<BOT_SECRET>
+https://<你的worker域名>/webhookinfo?secret=<BOT_SECRET>
+```
 
----
+## 管理命令
 
-## 本地开发（可选）
+仅 `ADMIN_UID` 可用。
+
+| 命令 | 说明 |
+| --- | --- |
+| reply 用户消息 + 普通文本 | 直接回复该用户 |
+| reply 用户消息 + `/ai <意向>` | 生成代笔草稿,可确认回复/重新生成/自行回复 |
+| `/ai <问题>` | 与私人助理对话 |
+| `/aimode on` / `/aimode off` | 开启/关闭 AI 模式;开启后普通消息直接进入助理 |
+| `/model` | 查看当前模型 |
+| `/model list` | 查询中转站可用模型 |
+| `/model <模型名>` | 切换当前模型 |
+| `/model default` | 恢复默认模型 |
+| `/to <uid> <内容>` | 主动给指定用户发消息 |
+| `/intercepts [数量]` | 查看最近拦截记录 |
+| `/ban <uid>` | 手动封禁用户;也可 reply 后 `/ban` |
+| `/unban <uid>` | 解封用户并清空违规/申诉次数 |
+
+被封禁用户可发送:
+
+```text
+/appeal <申诉说明>
+```
+
+## 自动搜索说明
+
+配置 `SEARCH_API_KEY` 后,助理会在普通聊天中自行判断是否需要联网搜索。比如询问“今天/最新/当前/新闻/赛程/价格/版本/官网”等问题时,会调用搜索 API,再让模型基于搜索结果总结并附来源。
+
+支持:
+
+```text
+SEARCH_PROVIDER=brave
+SEARCH_PROVIDER=tavily
+```
+
+如果没有配置 `SEARCH_API_KEY`,不会调用搜索 API,也不会额外消耗搜索额度。
+
+## 隐私与安全
+
+- 不要把 `BOT_TOKEN`、`BOT_SECRET`、`AI_API_KEY`、`SEARCH_API_KEY` 写进仓库。
+- `BOT_SECRET` 会校验 Telegram webhook 请求头,避免伪造请求。
+- 管理命令必须由 `ADMIN_UID` 发出才会执行。
+- 截图中请避免公开 bot token、API key、完整个人隐私信息。Telegram `uid` 不等于密钥,但仍属于可识别信息,公开仓库展示前建议打码。
+- 被 ban 用户后续消息不会再走 AI,能减少 token 消耗和骚扰。
+
+## 本地开发
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # 填入 BOT_TOKEN / BOT_SECRET / AI_API_KEY
+cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-CLI 部署（替代网页方式）：
+CLI 部署:
 
 ```bash
-npm run kv:create                 # 把输出的 id 填进 wrangler.jsonc
+npm run kv:create
 npx wrangler secret put BOT_TOKEN
 npx wrangler secret put BOT_SECRET
 npx wrangler secret put AI_API_KEY
+npx wrangler secret put SEARCH_API_KEY
 npm run deploy
 ```
 
----
+## 当前边界
 
-## 管理命令（仅 ADMIN_UID 可用）
-
-- reply 转发消息 + 文本 → 回复该用户
-- reply 转发消息 + `/ai <意向>` → AI 代笔草稿，草稿下方可点“确认回复 / 重新生成 / 自行回复”
-- `/ai <问题>` → 与私人助理对话
-- `/model` → 查看当前模型；`/model list` 列出可用模型；`/model <名字>` 切换；`/model default` 恢复默认
-- `/to <uid> 内容` → 主动给某用户发消息
-- `/intercepts [数量]` → 查看最近拦截记录
-- `/ban` / `/unban`（reply 或带 uid）→ 封禁/解封
-- 被 AI 拦截累计 `AUTO_BAN_THRESHOLD` 次会自动封禁；封禁用户可 `/appeal <说明>` 申诉，次数由 `APPEAL_MAX_ATTEMPTS` 控制
+- 暂不支持 AI 看图。图片/文件可转发,但不会被模型理解。
+- 管理群/话题模式保留为未来扩展,当前主模式是个人私聊。
+- 搜索依赖第三方搜索 API,搜索质量取决于 provider 与查询结果。
