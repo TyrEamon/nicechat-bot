@@ -3,6 +3,7 @@ import { GhostDraft, Store } from './store';
 import { Telegram } from './telegram';
 import { chatComplete } from './ai-filter';
 import { formatTelegramHtml } from './format';
+import { appendSources, decideSearch, renderSearchContext, runSearch, searchSystemPrompt, withSearchContext } from './search';
 
 const ASSISTANT_PROMPT =
   '你是机器人主人的私人助理，简洁、专业地协助主人处理日常事务与问题。' +
@@ -64,7 +65,17 @@ export async function handleAssistant(
     const history = await store.getContext('admin');
     history.push({ role: 'user', content: question });
     const model = (await store.getActiveModel()) || env.AI_MODEL;
-    const answer = await chatComplete(history, env, ASSISTANT_PROMPT, model);
+    const decision = await decideSearch(question, env, model);
+    let answer: string;
+    if (decision.needSearch) {
+      await tg.editMessageText(adminId, ack.message_id, '🔎 需要联网搜索，正在查找资料…').catch(() => {});
+      const results = await runSearch(decision.query, env);
+      const searchContext = renderSearchContext(decision.query, results);
+      const searched = await chatComplete(withSearchContext(history, searchContext), env, searchSystemPrompt(ASSISTANT_PROMPT), model);
+      answer = appendSources(searched, results);
+    } else {
+      answer = await chatComplete(history, env, ASSISTANT_PROMPT, model);
+    }
     const finalText = answer && answer.trim() ? answer : '(AI 返回了空内容，可能超时或模型无输出)';
 
     await sendAiText(tg, adminId, finalText);

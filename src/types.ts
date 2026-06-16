@@ -7,6 +7,7 @@ export interface Env {
   BOT_TOKEN: string;
   BOT_SECRET: string;
   AI_API_KEY: string;
+  SEARCH_API_KEY: string;
 
   // Vars
   ADMIN_UID: string;
@@ -32,6 +33,11 @@ export interface Env {
   AUTO_GREETING: string;
   AI_REPLY_PREVIEW: string;
   AI_CONTEXT_ROUNDS: string;
+
+  AUTO_SEARCH_ENABLED: string;
+  SEARCH_PROVIDER: string;
+  SEARCH_MAX_RESULTS: string;
+  SEARCH_DECISION_MODEL: string;
 }
 
 export type SpamCategory = 'normal' | 'ad' | 'scam' | 'spam';

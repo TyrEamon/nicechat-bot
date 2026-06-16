@@ -41,6 +41,11 @@
     "WELCOME_MESSAGE": "喵～你好呀，这里是主人的专属双向小助手！为了挡住坏坏的广告机器人，请先回答一个超简单的小问题完成验证，然后就可以开始聊天啦～",
     "AUTO_GREETING": "喵～你好呀！我是主人的猫娘小助理，你的消息已经稳稳收到并转达给主人啦，请稍等主人回复你哦～(=^･ω･^=)",
     "AI_REPLY_PREVIEW": "preview",  // preview | send
-    "AI_CONTEXT_ROUNDS": "6"
+    "AI_CONTEXT_ROUNDS": "6",
+
+    "AUTO_SEARCH_ENABLED": "true",
+    "SEARCH_PROVIDER": "brave",       // brave | tavily
+    "SEARCH_MAX_RESULTS": "5",
+    "SEARCH_DECISION_MODEL": ""       // empty = use current AI model
   }
 }

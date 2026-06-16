@@ -32,6 +32,7 @@
 | `BOT_TOKEN` | ✅ | Telegram bot token，@BotFather 给的 | `123456:ABC-DEF...` |
 | `BOT_SECRET` | ✅ | 自定义随机字符串，校验 webhook 来源（注册 webhook 时也用它） | 自己生成一长串随机字符 |
 | `AI_API_KEY` | ✅ | 你的中转站 API key | `sk-xxxx` |
+| `SEARCH_API_KEY` |  | Brave Search 或 Tavily 的搜索 API key；不填则自动搜索关闭 | `BSA...` / `tvly-...` |
 
 ### 二、Vars（普通环境变量 — 明文即可）
 
@@ -58,6 +59,10 @@
 | `AUTO_GREETING` |  | 见下 | 前台自动身份问候语。**留空则不自动问候** |
 | `AI_REPLY_PREVIEW` |  | `preview` | 代笔模式。`preview`=草稿先给你确认；`send`=直接发给对方 |
 | `AI_CONTEXT_ROUNDS` |  | `6` | AI 多轮上下文保留轮数 |
+| `AUTO_SEARCH_ENABLED` |  | `true` | 自动搜索判断开关；只有配置 `SEARCH_API_KEY` 后才会真正搜索 |
+| `SEARCH_PROVIDER` |  | `brave` | 搜索服务：`brave` / `tavily` |
+| `SEARCH_MAX_RESULTS` |  | `5` | 每次搜索取回的结果数，建议 3~5 |
+| `SEARCH_DECISION_MODEL` |  | （留空） | 搜索决策用模型；留空则使用当前模型 |
 
 文本类建议值：
 - `WELCOME_MESSAGE`：`你好，我是这台双向机器人。请先通过一个简单验证再开始对话。`
