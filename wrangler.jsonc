@@ -2,7 +2,7 @@
   // Cloudflare Workers config for twochatbot.
   // Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "twochatbot",
+  "name": "nicechat-bot",
   "main": "src/index.ts",
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
