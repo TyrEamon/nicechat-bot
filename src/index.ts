@@ -6,6 +6,7 @@ import { ensureVerified } from './verify';
 import { classifyMessage, shouldIntercept } from './ai-filter';
 import { makeRelay } from './relay';
 import { handleAdminMessage } from './admin';
+import { handleDraftCallback } from './assistant';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -99,6 +100,24 @@ async function handleUpdate(update: TgUpdate, env: Env): Promise<void> {
   const tg = new Telegram(env.BOT_TOKEN);
 
   if (await store.seenUpdate(update.update_id)) return;
+
+  if (update.callback_query) {
+    const callback = update.callback_query;
+    if (!isAdmin(env, callback.from.id)) {
+      await tg.answerCallbackQuery(callback.id, '无权限');
+      return;
+    }
+    const data = callback.data ?? '';
+    const messageId = callback.message?.message_id;
+    const match = data.match(/^draft:(send|regen|manual):(.+)$/);
+    if (match && messageId) {
+      await tg.answerCallbackQuery(callback.id, '处理中…');
+      await handleDraftCallback(match[1], match[2], messageId, env, store, tg);
+      return;
+    }
+    await tg.answerCallbackQuery(callback.id, '未知操作');
+    return;
+  }
 
   const msg = update.message ?? update.edited_message;
   if (!msg || !msg.from || msg.from.is_bot) return;

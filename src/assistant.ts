@@ -1,5 +1,5 @@
 import type { Env } from './types';
-import { Store } from './store';
+import { GhostDraft, Store } from './store';
 import { Telegram } from './telegram';
 import { chatComplete } from './ai-filter';
 
@@ -7,6 +7,34 @@ const ASSISTANT_PROMPT = '你是机器人主人的私人助理，简洁、专业
 const GHOST_PROMPT =
   '你在替机器人的主人回复一位陌生用户。请根据主人给出的“意向”和此前的会话上下文，' +
   '生成一条得体、简洁、礼貌的回复，直接输出回复正文，不要解释。';
+
+function makeDraftId(userId: number): string {
+  return `${userId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function draftButtons(id: string) {
+  return {
+    inline_keyboard: [
+      [
+        { text: '✅ 确认回复', callback_data: `draft:send:${id}` },
+        { text: '🔄 重新生成', callback_data: `draft:regen:${id}` },
+      ],
+      [{ text: '✍️ 自行回复', callback_data: `draft:manual:${id}` }],
+    ],
+  };
+}
+
+function draftText(draft: GhostDraft): string {
+  return `📝 代笔草稿（回复 uid:${draft.userId}）：\n\n${draft.draft}`;
+}
+
+async function generateDraft(userId: number, intent: string, env: Env, store: Store): Promise<string> {
+  const ctx = await store.getContext(String(userId));
+  const messages = [...ctx, { role: 'user' as const, content: `主人的回复意向：${intent}` }];
+  const model = (await store.getActiveModel()) || env.AI_MODEL;
+  const draft = await chatComplete(messages, env, GHOST_PROMPT, model);
+  return draft && draft.trim() ? draft : '(AI 返回了空草稿，可能超时或模型无输出)';
+}
 
 // /ai <question>  (no reply): chat with the personal assistant.
 export async function handleAssistant(
@@ -48,35 +76,71 @@ export async function handleGhostwrite(
   tg: Telegram,
 ): Promise<void> {
   const adminId = env.ADMIN_UID;
-  const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
   const ack = await tg.sendMessage(adminId, '✍️ 代笔中…');
-  let draft: string;
 
   try {
-    const ctx = await store.getContext(String(userId));
-    const messages = [...ctx, { role: 'user' as const, content: `主人的回复意向：${intent}` }];
-    const model = (await store.getActiveModel()) || env.AI_MODEL;
-    draft = await chatComplete(messages, env, GHOST_PROMPT, model);
+    const draft: GhostDraft = {
+      id: makeDraftId(userId),
+      userId,
+      intent,
+      draft: await generateDraft(userId, intent, env, store),
+      createdAt: Date.now(),
+    };
+    await store.saveGhostDraft(draft);
+    await tg.editMessageText(adminId, ack.message_id, draftText(draft), { reply_markup: draftButtons(draft.id) });
   } catch (e) {
     await tg
       .editMessageText(adminId, ack.message_id, `⚠️ 代笔出错：${(e as Error).message}`)
       .catch(async () => {
         await tg.sendMessage(adminId, `⚠️ 代笔出错：${(e as Error).message}`).catch(() => {});
       });
+  }
+}
+
+export async function handleDraftCallback(
+  action: string,
+  draftId: string,
+  messageId: number,
+  env: Env,
+  store: Store,
+  tg: Telegram,
+): Promise<void> {
+  const adminId = env.ADMIN_UID;
+  const rounds = Number(env.AI_CONTEXT_ROUNDS || '6');
+  const draft = await store.getGhostDraft(draftId);
+  if (!draft) {
+    await tg.editMessageText(adminId, messageId, '⚠️ 草稿已过期，请重新生成。').catch(() => {});
     return;
   }
 
-  const finalDraft = draft && draft.trim() ? draft : '(AI 返回了空草稿，可能超时或模型无输出)';
+  if (action === 'send') {
+    await tg.sendMessage(draft.userId, draft.draft);
+    await store.appendContext(String(draft.userId), { role: 'assistant', content: draft.draft }, rounds);
+    await store.deleteGhostDraft(draftId);
+    await tg.editMessageText(adminId, messageId, `✅ 已发送给 uid:${draft.userId}\n\n${draft.draft}`).catch(() => {});
+    return;
+  }
 
-  if ((env.AI_REPLY_PREVIEW || 'preview') === 'send') {
-    await tg.sendMessage(userId, finalDraft);
-    await store.appendContext(String(userId), { role: 'assistant', content: finalDraft }, rounds);
-    await tg.editMessageText(adminId, ack.message_id, `✅ 已按意向回复 uid:${userId}`).catch(() => {});
-  } else {
-    await tg.editMessageText(adminId, ack.message_id, '✅ 草稿已生成').catch(() => {});
-    await tg.sendLong(
+  if (action === 'regen') {
+    await tg.editMessageText(adminId, messageId, '🔄 正在重新生成草稿…').catch(() => {});
+    const next: GhostDraft = {
+      ...draft,
+      id: makeDraftId(draft.userId),
+      draft: await generateDraft(draft.userId, draft.intent, env, store),
+      createdAt: Date.now(),
+    };
+    await store.deleteGhostDraft(draftId);
+    await store.saveGhostDraft(next);
+    await tg.editMessageText(adminId, messageId, draftText(next), { reply_markup: draftButtons(next.id) });
+    return;
+  }
+
+  if (action === 'manual') {
+    await store.deleteGhostDraft(draftId);
+    await tg.editMessageText(
       adminId,
-      `📝 代笔草稿（回复 uid:${userId}）：\n\n${finalDraft}\n\n满意的话用 /to ${userId} <内容> 发出，或 reply 用户消息手动回复。`,
+      messageId,
+      `✍️ 已切换为自行回复。\n\n请直接 reply 用户转发消息输入你的回复，或使用：\n/to ${draft.userId} <你的回复>`,
     );
   }
 }

@@ -31,8 +31,8 @@ export class Telegram {
     }
   }
 
-  editMessageText(chatId: number | string, messageId: number, text: string) {
-    return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text });
+  editMessageText(chatId: number | string, messageId: number, text: string, extra: Record<string, unknown> = {}) {
+    return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text, ...extra });
   }
 
   copyMessage(toChatId: number | string, fromChatId: number | string, messageId: number, extra: Record<string, unknown> = {}) {

@@ -122,7 +122,7 @@ npm run deploy
 ## 管理命令（仅 ADMIN_UID 可用）
 
 - reply 转发消息 + 文本 → 回复该用户
-- reply 转发消息 + `/ai <意向>` → AI 代笔回复该用户
+- reply 转发消息 + `/ai <意向>` → AI 代笔草稿，草稿下方可点“确认回复 / 重新生成 / 自行回复”
 - `/ai <问题>` → 与私人助理对话
 - `/model` → 查看当前模型；`/model list` 列出可用模型；`/model <名字>` 切换；`/model default` 恢复默认
 - `/to <uid> 内容` → 主动给某用户发消息

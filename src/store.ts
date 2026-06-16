@@ -1,5 +1,13 @@
 import type { Env, UserProfile, ChatTurn } from './types';
 
+export interface GhostDraft {
+  id: string;
+  userId: number;
+  intent: string;
+  draft: string;
+  createdAt: number;
+}
+
 // Thin KV wrapper. All KV key conventions live here.
 export class Store {
   constructor(private kv: KVNamespace) {}
@@ -109,6 +117,19 @@ export class Store {
 
   clearActiveModel(): Promise<void> {
     return this.kv.delete('cfg:model');
+  }
+
+  // ---- ghostwrite drafts ----
+  saveGhostDraft(draft: GhostDraft, ttl = 60 * 60): Promise<void> {
+    return this.putJSON(`draft:${draft.id}`, draft, ttl);
+  }
+
+  getGhostDraft(id: string): Promise<GhostDraft | null> {
+    return this.getJSON<GhostDraft>(`draft:${id}`);
+  }
+
+  deleteGhostDraft(id: string): Promise<void> {
+    return this.kv.delete(`draft:${id}`);
   }
 
   // ---- conversation context ----
