@@ -32,8 +32,9 @@ export async function handleAdminMessage(msg: TgMessage, env: Env, store: Store,
       const models = await listModels(env);
       if (!models.length) return void tg.sendMessage(adminId, '未能获取模型列表（检查 AI_BASE_URL / AI_API_KEY，或中转站不支持 /models）。');
       const cur = (await store.getActiveModel()) || env.AI_MODEL;
-      const text = models.map((m) => (m === cur ? `• ${m}  ← 当前` : `• ${m}`)).join('\n');
-      return void tg.sendMessage(adminId, `可用模型（共 ${models.length}）：\n${text}`);
+      const list = models.map((m) => (m === cur ? `• ${m}  ← 当前` : `• ${m}`)).join('\n');
+      await tg.sendLong(adminId, `可用模型（共 ${models.length}）：\n${list}`);
+      return;
     }
     if (arg === 'default') {
       await store.clearActiveModel();

@@ -20,6 +20,17 @@ export class Telegram {
     return this.call<{ message_id: number }>('sendMessage', { chat_id: chatId, text, ...extra });
   }
 
+  async sendLong(chatId: number | string, text: string): Promise<void> {
+    const MAX = 4000;
+    if (text.length <= MAX) {
+      await this.sendMessage(chatId, text);
+      return;
+    }
+    for (let i = 0; i < text.length; i += MAX) {
+      await this.sendMessage(chatId, text.slice(i, i + MAX));
+    }
+  }
+
   copyMessage(toChatId: number | string, fromChatId: number | string, messageId: number, extra: Record<string, unknown> = {}) {
     return this.call<{ message_id: number }>('copyMessage', {
       chat_id: toChatId,

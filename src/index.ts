@@ -71,7 +71,11 @@ async function handleUpdate(update: TgUpdate, env: Env): Promise<void> {
 
   // Admin side (private chat with the bot).
   if (isAdmin(env, msg.from.id)) {
-    await handleAdminMessage(msg, env, store, tg);
+    try {
+      await handleAdminMessage(msg, env, store, tg);
+    } catch (e) {
+      await tg.sendMessage(env.ADMIN_UID, `⚠️ 处理出错：${(e as Error).message}`).catch(() => {});
+    }
     return;
   }
 
