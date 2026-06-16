@@ -13,6 +13,12 @@ export default {
 
     if (url.pathname === '/health') return new Response('ok');
 
+    if (url.pathname === '/trace') {
+      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
+      const t = await env.TG_BOT_KV.get('debug:trace');
+      return new Response(t || '(无 trace)', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    }
+
     if (url.pathname === '/lasterror') {
       if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
       const e = await env.TG_BOT_KV.get('debug:lasterror');
@@ -147,24 +153,38 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 async function handleUpdate(update: TgUpdate, env: Env): Promise<void> {
+  const steps: string[] = [];
+  const trace = (s: string) => {
+    steps.push(`${steps.length}: ${s}`);
+    return env.TG_BOT_KV.put('debug:trace', steps.join('\n'), { expirationTtl: 3600 });
+  };
+  await trace('handleUpdate enter');
   const store = makeStore(env);
   const tg = new Telegram(env.BOT_TOKEN);
 
-  if (await store.seenUpdate(update.update_id)) return; // idempotency
+  const seen = await store.seenUpdate(update.update_id);
+  await trace('seenUpdate=' + seen);
+  if (seen) return; // idempotency
 
   const msg = update.message ?? update.edited_message;
-  if (!msg || !msg.from || msg.from.is_bot) return;
+  if (!msg || !msg.from || msg.from.is_bot) { await trace('no msg/from or is_bot, return'); return; }
+
+  await trace('from.id=' + msg.from.id + ' isAdmin=' + isAdmin(env, msg.from.id));
 
   // Admin side (private chat with the bot).
   if (isAdmin(env, msg.from.id)) {
     try {
+      await trace('calling handleAdminMessage, text=' + (msg.text ?? msg.caption ?? ''));
       await handleAdminMessage(msg, env, store, tg);
+      await trace('handleAdminMessage done');
     } catch (e) {
+      await trace('admin error: ' + (e as Error).message);
       await tg.sendMessage(env.ADMIN_UID, `⚠️ 处理出错：${(e as Error).message}`).catch(() => {});
     }
     return;
   }
 
+  await trace('calling handleUserMessage');
   await handleUserMessage(msg, env, store, tg);
 }
 
