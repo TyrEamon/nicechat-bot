@@ -77,7 +77,7 @@ AI_FALLBACK_TO_CF=true
 CF_AI_MODEL=@cf/meta/llama-3.3-70b-instruct-fp8-fast
 ```
 
-Workers AI 足够承担基础兜底、轻量过滤、简单问答等场景。对于高质量长回答、复杂推理、中文代笔和联网搜索总结,建议主通道仍使用你的 OpenAI 兼容中转站。Cloudflare 的可用模型会变化,如果 `/diag` 显示 Workers AI 模型不可用,换一个当前可用的 `CF_AI_MODEL` 即可。
+Workers AI 足够承担基础兜底、轻量过滤、简单问答等场景。对于高质量长回答、复杂推理、中文代笔和联网搜索总结,建议主通道仍使用你的 OpenAI 兼容中转站。Cloudflare 的可用模型会变化,如果备用模型不可用,换一个当前可用的 `CF_AI_MODEL` 即可。
 
 ### 够不够用?
 
@@ -186,8 +186,6 @@ https://<你的worker域名>/setcommands?secret=<BOT_SECRET>
 
 ```text
 https://<你的worker域名>/health
-https://<你的worker域名>/diag?secret=<BOT_SECRET>
-https://<你的worker域名>/webhookinfo?secret=<BOT_SECRET>
 ```
 
 ## 管理命令

@@ -14,41 +14,6 @@ export default {
 
     if (url.pathname === '/health') return new Response('ok');
 
-    if (url.pathname === '/webhookinfo') {
-      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
-      const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getWebhookInfo`);
-      return new Response(await r.text(), { headers: { 'content-type': 'application/json; charset=utf-8' } });
-    }
-
-    if (url.pathname === '/diag') {
-      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
-      const out: Record<string, unknown> = {
-        has_BOT_TOKEN: !!env.BOT_TOKEN,
-        has_AI_API_KEY: !!env.AI_API_KEY,
-        AI_BASE_URL: env.AI_BASE_URL,
-        AI_MODEL: env.AI_MODEL,
-        AI_PROVIDER: env.AI_PROVIDER,
-        ADMIN_UID: env.ADMIN_UID,
-      };
-      try {
-        const r = await fetch(`${(env.AI_BASE_URL || '').replace(/\/$/, '')}/chat/completions`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
-          body: JSON.stringify({ model: env.AI_MODEL, messages: [{ role: 'user', content: 'ping' }] }),
-        });
-        out.relay_status = r.status;
-        out.relay_body = (await r.text()).slice(0, 300);
-      } catch (e) {
-        out.relay_error = (e as Error).message;
-      }
-      try {
-        const ai = (await env.AI.run(env.CF_AI_MODEL, { messages: [{ role: 'user', content: 'ping' }] })) as { response?: string };
-        out.workers_ai = ai.response?.slice(0, 120) ?? '(no response field)';
-      } catch (e) {
-        out.workers_ai_error = (e as Error).message;
-      }
-      return new Response(JSON.stringify(out, null, 2), { headers: { 'content-type': 'application/json' } });
-    }
 
     if (url.pathname === '/setcommands') {
       if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
