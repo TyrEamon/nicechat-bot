@@ -12,6 +12,12 @@ export async function ensureVerified(
 ): Promise<boolean> {
   if (profile.verified) return true;
 
+  if (text.trim() === '/start') {
+    await store.clearVerify(profile.id);
+    await issueChallenge(profile, env, store, tg);
+    return false;
+  }
+
   const pending = await store.getVerify(profile.id);
 
   // No challenge yet -> issue one.
@@ -30,7 +36,7 @@ export async function ensureVerified(
   }
 
   await store.bumpVerifyTries(profile.id, pending);
-  await tg.sendMessage(profile.id, '❌ 答案不对，请再试一次。');
+  await tg.sendMessage(profile.id, `❌ 答案不对，请再试一次。当前题目答案不是这条消息；如果看不到题目，请发送 /start 重新获取。`);
   return false;
 }
 

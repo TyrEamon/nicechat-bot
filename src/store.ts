@@ -70,6 +70,15 @@ export class Store {
     return this.kv.delete(`verify:${userId}`);
   }
 
+  async resetVerification(userId: number): Promise<void> {
+    const profile = await this.getUser(userId);
+    if (profile) {
+      profile.verified = false;
+      await this.saveUser(profile);
+    }
+    await this.clearVerify(userId);
+  }
+
   // ---- reply mapping: admin message id -> user id ----
   mapAdminMsg(adminMsgId: number, userId: number, ttl = 60 * 60 * 24 * 7): Promise<void> {
     return this.kv.put(`msgmap:${adminMsgId}`, String(userId), { expirationTtl: ttl });

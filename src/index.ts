@@ -117,10 +117,6 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
     return;
   }
 
-  if (text.trim() === '/start') {
-    await tg.sendMessage(userId, env.WELCOME_MESSAGE || '你好。');
-  }
-
   let profile = await store.getUser(userId);
   if (!profile) {
     profile = {
@@ -132,6 +128,12 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
       createdAt: Date.now(),
     };
     await store.saveUser(profile);
+  }
+
+  if (text.trim() === '/start') {
+    await tg.sendMessage(userId, env.WELCOME_MESSAGE || '你好。');
+    await store.resetVerification(userId);
+    profile.verified = false;
   }
 
   if (!profile.verified) {
