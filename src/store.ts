@@ -89,6 +89,15 @@ export class Store {
     return this.putJSON(`intercepted:${id}`, data, 60 * 60 * 24 * 30);
   }
 
+  // ---- admin AI chat mode ----
+  async getAdminAiMode(): Promise<boolean> {
+    return (await this.kv.get('cfg:admin_ai_mode')) === 'on';
+  }
+
+  setAdminAiMode(on: boolean): Promise<void> {
+    return on ? this.kv.put('cfg:admin_ai_mode', 'on') : this.kv.delete('cfg:admin_ai_mode');
+  }
+
   // ---- active AI model override ----
   getActiveModel(): Promise<string | null> {
     return this.kv.get('cfg:model');

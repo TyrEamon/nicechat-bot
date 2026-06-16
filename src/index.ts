@@ -56,6 +56,7 @@ export default {
       const adminCommands = [
         { command: 'ai', description: '与AI助理对话；reply转发消息则按意向代笔' },
         { command: 'model', description: '查看/切换模型：list 列表，<名字> 切换，default 恢复' },
+        { command: 'aimode', description: 'AI 模式开关：on 开启普通消息直聊，off 退出' },
         { command: 'to', description: '主动给用户发消息：/to <uid> 内容' },
         { command: 'block', description: '拉黑用户（reply转发消息或带uid）' },
         { command: 'unblock', description: '解封用户（reply转发消息或带uid）' },

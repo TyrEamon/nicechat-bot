@@ -16,6 +16,23 @@ export async function handleAdminMessage(
   const replied = msg.reply_to_message;
 
   // Commands
+  if (text.startsWith('/aimode')) {
+    const arg = text.replace(/^\/aimode\s*/, '').trim().toLowerCase();
+    if (arg === 'on') {
+      await store.setAdminAiMode(true);
+      await tg.sendMessage(adminId, '✅ 已进入 AI 模式。之后直接发普通消息就是和助理聊天；/aimode off 退出。');
+      return;
+    }
+    if (arg === 'off') {
+      await store.setAdminAiMode(false);
+      await tg.sendMessage(adminId, '✅ 已退出 AI 模式。');
+      return;
+    }
+    const on = await store.getAdminAiMode();
+    await tg.sendMessage(adminId, `AI 模式：${on ? '开启' : '关闭'}\n用法：/aimode on 或 /aimode off`);
+    return;
+  }
+
   if (text.startsWith('/block') || text.startsWith('/unblock')) {
     const uid = await targetUid(text, replied, store);
     if (!uid) {
@@ -97,6 +114,12 @@ export async function handleAdminMessage(
       await tg.copyMessage(uid, msg.chat.id, msg.message_id);
       return;
     }
+  }
+
+  // AI mode: plain admin messages go to the assistant without needing /ai.
+  if (text && !text.startsWith('/') && (await store.getAdminAiMode())) {
+    await handleAssistant(text, env, store, tg);
+    return;
   }
 
   await tg.sendMessage(adminId, 'ℹ️ 请 reply 某条转发消息来回复用户，或用 /to <uid> 指定对象，或 /ai <问题> 找助理。');
