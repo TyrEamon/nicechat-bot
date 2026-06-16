@@ -12,7 +12,7 @@
 
   // KV namespace. Replace "id" with the id printed by: npm run kv:create
   "kv_namespaces": [
-    { "binding": "TG_BOT_KV", "id": "REPLACE_WITH_YOUR_KV_ID" }
+    { "binding": "TG_BOT_KV", "id": "39996f77e968492ea5b613ed008a08be" }
   ],
 
   // Non-sensitive config. Secrets (BOT_TOKEN / BOT_SECRET / AI_API_KEY) go via:
