@@ -159,6 +159,8 @@ export async function chatCompleteStream(
   if (!env.AI_BASE_URL || !env.AI_API_KEY) {
     return chatComplete(messages, env, systemPrompt, model);
   }
+  const dbg = (s: string) => env.TG_BOT_KV.put('debug:stream', s, { expirationTtl: 3600 }).catch(() => {});
+  await dbg('stream: start, timeout=' + (env.AI_TIMEOUT_MS || '120000'));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(env.AI_TIMEOUT_MS || '120000'));
   try {
@@ -168,6 +170,7 @@ export async function chatCompleteStream(
       body: JSON.stringify({ model, messages: full, stream: true }),
       signal: controller.signal,
     });
+    await dbg('stream: fetch status=' + res.status + ' hasBody=' + !!res.body);
     if (!res.ok || !res.body) {
       clearTimeout(timeout);
       return chatComplete(messages, env, systemPrompt, model);
@@ -200,14 +203,18 @@ export async function chatCompleteStream(
       }
     }
     clearTimeout(timeout);
-    // Some relays accept stream:true for non-streaming models but send a plain
-    // JSON body, yielding no deltas. Fall back to a normal request in that case.
+    await dbg('stream: loop done, accLen=' + acc.length);
     if (!acc.trim()) {
-      return chatComplete(messages, env, systemPrompt, model);
+      const fb = await chatComplete(messages, env, systemPrompt, model);
+      await dbg('stream: empty acc, fallback len=' + fb.length);
+      return fb;
     }
     return acc;
-  } catch {
+  } catch (e) {
     clearTimeout(timeout);
-    return chatComplete(messages, env, systemPrompt, model);
+    await dbg('stream: catch ' + (e as Error).message);
+    const fb = await chatComplete(messages, env, systemPrompt, model);
+    await dbg('stream: catch fallback len=' + fb.length);
+    return fb;
   }
 }

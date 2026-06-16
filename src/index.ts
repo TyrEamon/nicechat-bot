@@ -13,6 +13,11 @@ export default {
 
     if (url.pathname === '/health') return new Response('ok');
 
+    if (url.pathname === '/streamdbg') {
+      if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
+      return new Response((await env.TG_BOT_KV.get('debug:stream')) || '(无)', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    }
+
     if (url.pathname === '/trace') {
       if (url.searchParams.get('secret') !== env.BOT_SECRET) return new Response('forbidden', { status: 403 });
       const t = await env.TG_BOT_KV.get('debug:trace');

@@ -44,7 +44,11 @@ export async function handleAssistant(question: string, env: Env, store: Store, 
     history.push({ role: 'user', content: question });
     const model = (await store.getActiveModel()) || env.AI_MODEL;
     const answer = await chatCompleteStream(history, env, ASSISTANT_PROMPT, model, (full) => editor.onProgress(full));
-    await editor.final(answer);
+    // Robust delivery: edit the placeholder, and if answer is empty say so explicitly.
+    const finalText = answer && answer.trim() ? answer : '(AI 返回了空内容，可能超时或流式无输出)';
+    await tg.editMessageText(adminId, ack.message_id, finalText.slice(0, 4000)).catch(async () => {
+      await tg.sendMessage(adminId, finalText.slice(0, 4000)).catch(() => {});
+    });
     await store.appendContext('admin', { role: 'user', content: question }, rounds);
     await store.appendContext('admin', { role: 'assistant', content: answer }, rounds);
   } catch (e) {
