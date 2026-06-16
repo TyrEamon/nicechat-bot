@@ -34,6 +34,11 @@ export interface Env {
   AI_REPLY_PREVIEW: string;
   AI_CONTEXT_ROUNDS: string;
 
+  AUTO_BAN_THRESHOLD: string;
+  BAN_MESSAGE: string;
+  APPEAL_MAX_ATTEMPTS: string;
+  APPEAL_MESSAGE: string;
+
   AUTO_SEARCH_ENABLED: string;
   SEARCH_PROVIDER: string;
   SEARCH_MAX_RESULTS: string;

@@ -63,6 +63,10 @@
 | `SEARCH_PROVIDER` |  | `brave` | 搜索服务：`brave` / `tavily` |
 | `SEARCH_MAX_RESULTS` |  | `5` | 每次搜索取回的结果数，建议 3~5 |
 | `SEARCH_DECISION_MODEL` |  | （留空） | 搜索决策用模型；留空则使用当前模型 |
+| `AUTO_BAN_THRESHOLD` |  | `3` | 被 AI 拦截累计达到该次数后自动封禁；设为 `0` 可关闭自动封禁 |
+| `BAN_MESSAGE` |  | 见配置 | 用户被封禁后收到的模板提示 |
+| `APPEAL_MAX_ATTEMPTS` |  | `2` | 被封禁用户可提交申诉的最大次数 |
+| `APPEAL_MESSAGE` |  | 见配置 | 用户提交申诉后收到的模板提示 |
 
 文本类建议值：
 - `WELCOME_MESSAGE`：`你好，我是这台双向机器人。请先通过一个简单验证再开始对话。`
@@ -131,4 +135,6 @@ npm run deploy
 - `/ai <问题>` → 与私人助理对话
 - `/model` → 查看当前模型；`/model list` 列出可用模型；`/model <名字>` 切换；`/model default` 恢复默认
 - `/to <uid> 内容` → 主动给某用户发消息
-- `/block` / `/unblock`（reply 或带 uid）→ 拉黑/解封
+- `/intercepts [数量]` → 查看最近拦截记录
+- `/ban` / `/unban`（reply 或带 uid）→ 封禁/解封
+- 被 AI 拦截累计 `AUTO_BAN_THRESHOLD` 次会自动封禁；封禁用户可 `/appeal <说明>` 申诉，次数由 `APPEAL_MAX_ATTEMPTS` 控制

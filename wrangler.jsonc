@@ -43,6 +43,11 @@
     "AI_REPLY_PREVIEW": "preview",  // preview | send
     "AI_CONTEXT_ROUNDS": "6",
 
+    "AUTO_BAN_THRESHOLD": "3",
+    "BAN_MESSAGE": "你已因多次发送广告或骚扰信息被系统封禁。如需申诉，请发送 /appeal <申诉说明>。",
+    "APPEAL_MAX_ATTEMPTS": "2",
+    "APPEAL_MESSAGE": "申诉已收到，管理员会视情况处理。请勿重复发送无关内容。",
+
     "AUTO_SEARCH_ENABLED": "true",
     "SEARCH_PROVIDER": "brave",       // brave | tavily
     "SEARCH_MAX_RESULTS": "5",

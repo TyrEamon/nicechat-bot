@@ -59,8 +59,9 @@ export default {
         { command: 'model', description: '查看/切换模型：list 列表，<名字> 切换，default 恢复' },
         { command: 'aimode', description: 'AI 模式开关：on 开启普通消息直聊，off 退出' },
         { command: 'to', description: '主动给用户发消息：/to <uid> 内容' },
-        { command: 'block', description: '拉黑用户（reply转发消息或带uid）' },
-        { command: 'unblock', description: '解封用户（reply转发消息或带uid）' },
+        { command: 'intercepts', description: '查看最近拦截记录' },
+        { command: 'ban', description: '封禁用户（reply转发消息或带uid）' },
+        { command: 'unban', description: '解封用户（reply转发消息或带uid）' },
       ];
       if (env.ADMIN_UID) {
         await tg.setMyCommands(adminCommands, { type: 'chat', chat_id: Number(env.ADMIN_UID) });
@@ -138,7 +139,10 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
   const userId = msg.from!.id;
   const text = msg.text ?? msg.caption ?? '';
 
-  if (await store.isBlocked(userId)) return;
+  if (await store.isBlocked(userId)) {
+    await handleBlockedUserMessage(userId, text, env, store, tg);
+    return;
+  }
 
   if (text.trim() === '/start') {
     await tg.sendMessage(userId, env.WELCOME_MESSAGE || '你好。');
@@ -171,16 +175,28 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
     const activeModel = (await store.getActiveModel()) || env.AI_MODEL;
     const c = await classifyMessage(text, env, activeModel);
     if (shouldIntercept(c, env)) {
+      const violationCount = await store.incrementViolation(userId);
       const id = `${userId}-${msg.message_id}`;
-      await store.saveIntercepted(id, {
+      await store.saveIntercepted({
+        id,
         userId,
         text,
         category: c.category,
         reason: c.reason,
         provider: c.provider,
         time: Date.now(),
+        violationCount,
       });
-      await tg.sendMessage(userId, '您的消息已收到。');
+      const threshold = Number(env.AUTO_BAN_THRESHOLD || '3');
+      if (threshold > 0 && violationCount >= threshold) {
+        await store.block(userId, `auto ban after ${violationCount} intercepted messages`, 'auto');
+        await tg.sendMessage(userId, env.BAN_MESSAGE || '你已被系统封禁。如需申诉，请发送 /appeal <申诉说明>。');
+        await tg
+          .sendMessage(env.ADMIN_UID, `🚫 自动封禁 uid:${userId}\n违规次数：${violationCount}\n最近原因：${c.reason}\n内容：${text.slice(0, 500)}`)
+          .catch(() => {});
+      } else {
+        await tg.sendMessage(userId, '您的消息已收到。');
+      }
       return;
     }
     await store.appendContext(String(userId), { role: 'user', content: text }, Number(env.AI_CONTEXT_ROUNDS || '6'));
@@ -194,4 +210,32 @@ async function handleUserMessage(msg: TgMessage, env: Env, store: Store, tg: Tel
 
   const relay = makeRelay(env, store, tg);
   await relay.deliverToAdmin(msg);
+}
+
+async function handleBlockedUserMessage(
+  userId: number,
+  text: string,
+  env: Env,
+  store: Store,
+  tg: Telegram,
+): Promise<void> {
+  if (text.trim().startsWith('/appeal')) {
+    const appealText = text.replace(/^\/appeal\s*/, '').trim();
+    const maxAttempts = Number(env.APPEAL_MAX_ATTEMPTS || '2');
+    const attempts = await store.incrementAppeal(userId);
+    if (attempts > maxAttempts) {
+      await tg.sendMessage(userId, '申诉次数已用完，请等待管理员处理。');
+      return;
+    }
+    await tg.sendMessage(userId, env.APPEAL_MESSAGE || '申诉已收到，管理员会视情况处理。');
+    await tg
+      .sendMessage(
+        env.ADMIN_UID,
+        `📩 封禁申诉 uid:${userId}\n次数：${attempts}/${maxAttempts}\n内容：${appealText || '(未填写说明)'}\n\n处理：/unban ${userId}`,
+      )
+      .catch(() => {});
+    return;
+  }
+
+  await tg.sendMessage(userId, env.BAN_MESSAGE || '你已被系统封禁。如需申诉，请发送 /appeal <申诉说明>。');
 }

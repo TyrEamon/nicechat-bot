@@ -33,18 +33,34 @@ export async function handleAdminMessage(
     return;
   }
 
-  if (text.startsWith('/block') || text.startsWith('/unblock')) {
-    const uid = await targetUid(text, replied, store);
-    if (!uid) {
-      await tg.sendMessage(adminId, '用法：reply 用户消息后发 /block，或 /block <uid>');
+  if (text.startsWith('/intercepts')) {
+    const limitMatch = text.match(/\b(\d{1,2})\b/);
+    const limit = limitMatch ? Number(limitMatch[1]) : 10;
+    const items = await store.getInterceptedIndex(limit);
+    if (!items.length) {
+      await tg.sendMessage(adminId, '暂无拦截记录。');
       return;
     }
-    if (text.startsWith('/unblock')) {
+    const lines = items.map((item, index) => {
+      const time = new Date(item.time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+      return `${index + 1}. uid:${item.userId} | ${item.category} | ${item.provider} | 次数:${item.violationCount ?? '-'}\n${time}\n原因：${item.reason}\n内容：${item.text.slice(0, 120)}`;
+    });
+    await tg.sendLong(adminId, `最近拦截记录：\n\n${lines.join('\n\n')}`);
+    return;
+  }
+
+  if (text.startsWith('/block') || text.startsWith('/ban') || text.startsWith('/unblock') || text.startsWith('/unban')) {
+    const uid = await targetUid(text, replied, store);
+    if (!uid) {
+      await tg.sendMessage(adminId, '用法：reply 用户消息后发 /ban，或 /ban <uid>；解封用 /unban <uid>');
+      return;
+    }
+    if (text.startsWith('/unblock') || text.startsWith('/unban')) {
       await store.unblock(uid);
       await tg.sendMessage(adminId, `已解封 uid:${uid}`);
       return;
     }
-    await store.block(uid);
+    await store.block(uid, 'manual ban', 'manual');
     await tg.sendMessage(adminId, `已拉黑 uid:${uid}`);
     return;
   }

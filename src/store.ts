@@ -8,6 +8,24 @@ export interface GhostDraft {
   createdAt: number;
 }
 
+export interface BlockInfo {
+  userId: number;
+  reason: string;
+  source: 'manual' | 'auto';
+  createdAt: number;
+}
+
+export interface InterceptedRecord {
+  id: string;
+  userId: number;
+  text: string;
+  category: string;
+  reason: string;
+  provider: string;
+  time: number;
+  violationCount?: number;
+}
+
 // Thin KV wrapper. All KV key conventions live here.
 export class Store {
   constructor(private kv: KVNamespace) {}
@@ -63,16 +81,58 @@ export class Store {
   }
 
   // ---- blocklist ----
-  block(userId: number, reason = '1'): Promise<void> {
-    return this.kv.put(`block:${userId}`, reason);
+  async block(userId: number, reason = 'blocked', source: 'manual' | 'auto' = 'manual'): Promise<void> {
+    const info: BlockInfo = { userId, reason, source, createdAt: Date.now() };
+    await this.putJSON(`block:${userId}`, info);
   }
 
-  unblock(userId: number): Promise<void> {
-    return this.kv.delete(`block:${userId}`);
+  async unblock(userId: number): Promise<void> {
+    await this.kv.delete(`block:${userId}`);
+    await this.clearViolations(userId);
+    await this.clearAppeals(userId);
+  }
+
+  async getBlockInfo(userId: number): Promise<BlockInfo | null> {
+    const parsed = await this.getJSON<BlockInfo>(`block:${userId}`);
+    if (parsed) return parsed;
+    const raw = await this.kv.get(`block:${userId}`);
+    return raw ? { userId, reason: raw, source: 'manual', createdAt: 0 } : null;
   }
 
   async isBlocked(userId: number): Promise<boolean> {
-    return (await this.kv.get(`block:${userId}`)) !== null;
+    return (await this.getBlockInfo(userId)) !== null;
+  }
+
+  // ---- violations / auto ban ----
+  async incrementViolation(userId: number): Promise<number> {
+    const key = `violations:${userId}`;
+    const count = Number((await this.kv.get(key)) ?? '0') + 1;
+    await this.kv.put(key, String(count), { expirationTtl: 60 * 60 * 24 * 30 });
+    return count;
+  }
+
+  async getViolationCount(userId: number): Promise<number> {
+    return Number((await this.kv.get(`violations:${userId}`)) ?? '0');
+  }
+
+  clearViolations(userId: number): Promise<void> {
+    return this.kv.delete(`violations:${userId}`);
+  }
+
+  // ---- appeal attempts ----
+  async incrementAppeal(userId: number): Promise<number> {
+    const key = `appeals:${userId}`;
+    const count = Number((await this.kv.get(key)) ?? '0') + 1;
+    await this.kv.put(key, String(count), { expirationTtl: 60 * 60 * 24 * 30 });
+    return count;
+  }
+
+  async getAppealCount(userId: number): Promise<number> {
+    return Number((await this.kv.get(`appeals:${userId}`)) ?? '0');
+  }
+
+  clearAppeals(userId: number): Promise<void> {
+    return this.kv.delete(`appeals:${userId}`);
   }
 
   // ---- rate limit (per minute window) ----
@@ -93,8 +153,16 @@ export class Store {
   }
 
   // ---- intercepted messages ----
-  saveIntercepted(id: string, data: unknown): Promise<void> {
-    return this.putJSON(`intercepted:${id}`, data, 60 * 60 * 24 * 30);
+  async saveIntercepted(record: InterceptedRecord): Promise<void> {
+    await this.putJSON(`intercepted:${record.id}`, record, 60 * 60 * 24 * 30);
+    const index = await this.getInterceptedIndex(100);
+    const next = [record, ...index.filter((item) => item.id !== record.id)].slice(0, 100);
+    await this.putJSON('intercepted:index', next, 60 * 60 * 24 * 30);
+  }
+
+  async getInterceptedIndex(limit = 10): Promise<InterceptedRecord[]> {
+    const items = (await this.getJSON<InterceptedRecord[]>('intercepted:index')) ?? [];
+    return items.slice(0, limit);
   }
 
   // ---- admin AI chat mode ----
