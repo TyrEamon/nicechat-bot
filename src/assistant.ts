@@ -2,11 +2,15 @@ import type { Env } from './types';
 import { GhostDraft, Store } from './store';
 import { Telegram } from './telegram';
 import { chatComplete } from './ai-filter';
+import { formatTelegramHtml } from './format';
 
-const ASSISTANT_PROMPT = '你是机器人主人的私人助理，简洁、专业地协助主人处理日常事务与问题。';
+const ASSISTANT_PROMPT =
+  '你是机器人主人的私人助理，简洁、专业地协助主人处理日常事务与问题。' +
+  '回复适合 Telegram 阅读，尽量少用 Markdown 标记；需要强调时保持克制。';
 const GHOST_PROMPT =
   '你在替机器人的主人回复一位陌生用户。请根据主人给出的“意向”和此前的会话上下文，' +
-  '生成一条得体、简洁、礼貌的回复，直接输出回复正文，不要解释。';
+  '生成一条得体、简洁、礼貌的回复，直接输出回复正文，不要解释。' +
+  '回复适合 Telegram 阅读，尽量少用 Markdown 标记；需要强调时保持克制。';
 
 function makeDraftId(userId: number): string {
   return `${userId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -25,7 +29,16 @@ function draftButtons(id: string) {
 }
 
 function draftText(draft: GhostDraft): string {
-  return `📝 代笔草稿（回复 uid:${draft.userId}）：\n\n${draft.draft}`;
+  return `📝 代笔草稿（回复 uid:${draft.userId}）：\n\n${formatTelegramHtml(draft.draft)}`;
+}
+
+async function sendAiText(tg: Telegram, chatId: number | string, text: string): Promise<void> {
+  const html = formatTelegramHtml(text);
+  if (html.length <= 3900) {
+    await tg.sendMessage(chatId, html, { parse_mode: 'HTML' });
+    return;
+  }
+  await tg.sendLong(chatId, text);
 }
 
 async function generateDraft(userId: number, intent: string, env: Env, store: Store): Promise<string> {
@@ -54,7 +67,7 @@ export async function handleAssistant(
     const answer = await chatComplete(history, env, ASSISTANT_PROMPT, model);
     const finalText = answer && answer.trim() ? answer : '(AI 返回了空内容，可能超时或模型无输出)';
 
-    await tg.sendLong(adminId, finalText);
+    await sendAiText(tg, adminId, finalText);
     await tg.editMessageText(adminId, ack.message_id, '✅ 已生成').catch(() => {});
     await store.appendContext('admin', { role: 'user', content: question }, rounds);
     await store.appendContext('admin', { role: 'assistant', content: answer }, rounds);
@@ -87,7 +100,10 @@ export async function handleGhostwrite(
       createdAt: Date.now(),
     };
     await store.saveGhostDraft(draft);
-    await tg.editMessageText(adminId, ack.message_id, draftText(draft), { reply_markup: draftButtons(draft.id) });
+    await tg.editMessageText(adminId, ack.message_id, draftText(draft), {
+      parse_mode: 'HTML',
+      reply_markup: draftButtons(draft.id),
+    });
   } catch (e) {
     await tg
       .editMessageText(adminId, ack.message_id, `⚠️ 代笔出错：${(e as Error).message}`)
@@ -114,10 +130,14 @@ export async function handleDraftCallback(
   }
 
   if (action === 'send') {
-    await tg.sendMessage(draft.userId, draft.draft);
+    await sendAiText(tg, draft.userId, draft.draft);
     await store.appendContext(String(draft.userId), { role: 'assistant', content: draft.draft }, rounds);
     await store.deleteGhostDraft(draftId);
-    await tg.editMessageText(adminId, messageId, `✅ 已发送给 uid:${draft.userId}\n\n${draft.draft}`).catch(() => {});
+    await tg
+      .editMessageText(adminId, messageId, `✅ 已发送给 uid:${draft.userId}\n\n${formatTelegramHtml(draft.draft)}`, {
+        parse_mode: 'HTML',
+      })
+      .catch(() => {});
     return;
   }
 
@@ -131,7 +151,10 @@ export async function handleDraftCallback(
     };
     await store.deleteGhostDraft(draftId);
     await store.saveGhostDraft(next);
-    await tg.editMessageText(adminId, messageId, draftText(next), { reply_markup: draftButtons(next.id) });
+    await tg.editMessageText(adminId, messageId, draftText(next), {
+      parse_mode: 'HTML',
+      reply_markup: draftButtons(next.id),
+    });
     return;
   }
 
